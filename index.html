@@ -38,104 +38,95 @@
         // GOOGLE SHEETS DATABASE CLASS
         // ============================================
 
-        class GoogleSheetsDB {
-            constructor(config) {
-                this.config = config;
-                this.scriptUrl = config.SCRIPT_URL;
-            }
+       class GoogleSheetsDB {
+    constructor(config) {
+        this.config = config;
+        this.scriptUrl = config.SCRIPT_URL;
+    }
 
-            async getAllEntries() {
-                try {
-                    const response = await fetch(`${this.scriptUrl}?action=getAllEntries`);
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        return data.data;
-                    }
-                    return [];
-                } catch (error) {
-                    console.error('Error fetching entries:', error);
-                    return [];
-                }
-            }
-
-            async addEntry(entry) {
-                try {
-                    const response = await fetch(this.scriptUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'addEntry',
-                            entry: entry
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error adding entry:', error);
-                    throw error;
-                }
-            }
-
-            async updateEntry(rowIndex, entry) {
-                try {
-                    const response = await fetch(this.scriptUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'updateEntry',
-                            rowIndex: rowIndex,
-                            entry: entry
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error updating entry:', error);
-                    throw error;
-                }
-            }
-
-            async deleteEntry(rowIndex) {
-                try {
-                    const response = await fetch(this.scriptUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'deleteEntry',
-                            rowIndex: rowIndex
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error deleting entry:', error);
-                    throw error;
-                }
-            }
-
-            // NEW: trigger archiveCompleted() in Apps Script
-            async archiveCompleted() {
-                try {
-                    const response = await fetch(this.scriptUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            action: 'archiveCompleted'
-                        })
-                    });
-
-                    const data = await response.json();
-                    return data;
-                } catch (error) {
-                    console.error('Error archiving entries:', error);
-                    throw error;
-                }
-            }
+    async getAllEntries() {
+        try {
+            const response = await fetch(`${this.scriptUrl}?action=getAllEntries`);
+            const data = await response.json();
+            return data.success ? data.data : [];
+        } catch (error) {
+            console.error('Error fetching entries:', error);
+            return [];
         }
+    }
+
+    async addEntry(entry) {
+        try {
+            const response = await fetch(this.scriptUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
+                body: JSON.stringify({
+                    action: 'addEntry',
+                    entry: entry
+                })
+            });
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error adding entry:', error);
+            throw error;
+        }
+    }
+
+    async updateEntry(rowIndex, entry) {
+        try {
+            const response = await fetch(this.scriptUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
+                body: JSON.stringify({
+                    action: 'updateEntry',
+                    rowIndex: rowIndex,
+                    entry: entry
+                })
+            });
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error updating entry:', error);
+            throw error;
+        }
+    }
+
+    async deleteEntry(rowIndex) {
+        try {
+            const response = await fetch(this.scriptUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
+                body: JSON.stringify({
+                    action: 'deleteEntry',
+                    rowIndex: rowIndex
+                })
+            });
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error deleting entry:', error);
+            throw error;
+        }
+    }
+
+    async archiveCompleted() {
+        try {
+            const response = await fetch(this.scriptUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
+                body: JSON.stringify({
+                    action: 'archiveCompleted'
+                })
+            });
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('Error archiving entries:', error);
+            throw error;
+        }
+    }
+}
 
         // ============================================
         // APPLICATION CLASS
@@ -790,3 +781,4 @@
     </script>
 </body>
 </html>
+
