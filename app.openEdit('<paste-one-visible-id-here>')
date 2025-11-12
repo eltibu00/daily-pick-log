@@ -109,13 +109,31 @@ class PickupLogApp {
     await this.db.addEntry(fd);
     this.state.showAdd=false; await this.load();
   }
-  async updateField(id, field, value){
-    const i=this.state.entries.findIndex(e=>e.id===id); if(i<0) return;
-    const entry = {...this.state.entries[i], [field]: value};
-    if(field==='pickupComplete'){ entry.completedDate = value ? new Date().toISOString().split('T')[0] : ''; }
-    await this.db.updateEntryById(id, entry);
-    this.state.entries[i]=entry; this.load();
+  async updateField(id, field, value) {
+  const i = this.state.entries.findIndex(e => e.id === id);
+  if (i < 0) return;
+
+  // Work on a copy
+  const entry = { ...this.state.entries[i], [field]: value };
+
+  // Auto-stamp or clear CompletedDate when Complete changes
+  if (field === 'pickupComplete') {
+    entry.completedDate = value ? new Date().toISOString().split('T')[0] : '';
   }
+
+  try {
+    await this.db.updateEntryById(id, entry);
+    // Update local state immediately for snappy UI
+    this.state.entries[i] = entry;
+    this.calculateStats?.();           // if you have this helper
+    this.render();
+  } catch (err) {
+    console.error('updateField failed', err);
+    alert('Update failed. Please refresh and try again.');
+    await this.load();                 // fall back to server truth
+  }
+}
+
   async delete(id){
     if(!confirm('Delete this entry?')) return;
     await this.db.deleteEntryById(id);
@@ -349,4 +367,13 @@ window.addEventListener('DOMContentLoaded',()=>{ app=new PickupLogApp(); });
 </script>
 </body>
 </html>
+<script>
+let app;
+window.addEventListener('DOMContentLoaded', () => {
+  app = new PickupLogApp();
+  // 🔑 Ensure inline HTML handlers (onclick/onchange="app.*") always see the instance
+  window.app = app;
+});
+</script>
+
 
