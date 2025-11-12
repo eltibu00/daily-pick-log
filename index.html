@@ -110,11 +110,10 @@ class PickupLogApp {
     this.state.showAdd=false; await this.load();
   }
  async updateField(id, field, value) {
-  const i = this.state.entries.findIndex(e => e.id === id);
+  const i = this.state.entries.findIndex(e => String(e.id) === String(id));
   if (i < 0) return;
 
   const entry = { ...this.state.entries[i], [field]: value };
-
   if (field === 'pickupComplete') {
     entry.completedDate = value ? new Date().toISOString().split('T')[0] : '';
   }
@@ -122,8 +121,11 @@ class PickupLogApp {
   try {
     await this.db.updateEntryById(id, entry);
     this.state.entries[i] = entry;
-    // recalc stats if you have a helper
-    if (typeof this.calculateStats === 'function') this.calculateStats();
+    // refresh UI and stats
+    const data = this.state.entries;
+    const completed = data.filter(e=>e.pickupComplete).length;
+    const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
+    this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
     this.render();
   } catch (err) {
     console.error('updateField failed', err);
@@ -131,6 +133,7 @@ class PickupLogApp {
     await this.load();
   }
 }
+
 
   async delete(id){
     if(!confirm('Delete this entry?')) return;
@@ -171,31 +174,45 @@ class PickupLogApp {
       return;
     }
 
-    const rows=this.filtered().map(e=>`
-      <tr class="hover:bg-gray-50">
-        <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
-        <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
-        <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
-        <td class="px-4 py-3 text-sm">${e.order||''}</td>
-        <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
-        <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
-        <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
-        <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
-        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.bolProvided?'checked':''}
-            onchange="app.updateField('${e.id}','bolProvided',this.checked)"></td>
-        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.printedByOps?'checked':''}
-            onchange="app.updateField('${e.id}','printedByOps',this.checked)"></td>
-        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.pickupComplete?'checked':''}
-            onchange="app.updateField('${e.id}','pickupComplete',this.checked)"></td>
-        <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
-        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.qualityCheck?'checked':''}
-            onchange="app.updateField('${e.id}','qualityCheck',this.checked)"></td>
-        <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
-        <td class="px-4 py-3 text-center">
-          <button class="text-indigo-600 mr-2" title="Edit" onclick="app.openEdit('${e.id}')">✏️</button>
-          <button class="text-red-600" title="Delete" onclick="app.delete('${e.id}')">🗑️</button>
-        </td>
-      </tr>`).join('');
+    const rows = this.filtered().map(e => `
+  <tr class="hover:bg-gray-50" data-id="${e.id}">
+    <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
+    <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
+    <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
+    <td class="px-4 py-3 text-sm">${e.order||''}</td>
+    <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
+    <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
+    <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
+    <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
+
+    <td class="px-4 py-3 text-center">
+      <input type="checkbox" class="w-5 h-5 cursor-pointer"
+             data-field="bolProvided" ${e.bolProvided ? 'checked' : ''}>
+    </td>
+    <td class="px-4 py-3 text-center">
+      <input type="checkbox" class="w-5 h-5 cursor-pointer"
+             data-field="printedByOps" ${e.printedByOps ? 'checked' : ''}>
+    </td>
+
+    <!-- ✅ Complete checkbox -->
+    <td class="px-4 py-3 text-center">
+      <input type="checkbox" class="w-5 h-5 cursor-pointer"
+             data-field="pickupComplete" ${e.pickupComplete ? 'checked' : ''}>
+    </td>
+
+    <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
+    <td class="px-4 py-3 text-center">
+      <input type="checkbox" class="w-5 h-5 cursor-pointer"
+             data-field="qualityCheck" ${e.qualityCheck ? 'checked' : ''}>
+    </td>
+    <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
+    <td class="px-4 py-3 text-center">
+      <button class="text-indigo-600 mr-2" title="Edit" data-edit data-id="${e.id}">✏️</button>
+      <button class="text-red-600" title="Delete" data-del data-id="${e.id}">🗑️</button>
+    </td>
+  </tr>
+`).join('');
+
 
     app.innerHTML=`
       <div class="p-6">
@@ -366,8 +383,39 @@ window.addEventListener('DOMContentLoaded', () => {
   // 🔑 Ensure inline HTML handlers (onclick/onchange="app.*") always see the instance
   window.app = app;
 });
+  bindTableEvents() {
+  const table = document.querySelector('tbody');
+  if (!table) return;
+
+  // Handle checkbox changes (BOL, OPS, Complete, QC)
+  table.addEventListener('change', (ev) => {
+    const target = ev.target;
+    if (target.matches('input[type="checkbox"][data-field]')) {
+      const row = target.closest('tr[data-id]');
+      const id = row?.dataset.id;
+      const field = target.dataset.field;
+      if (id && field) this.updateField(id, field, target.checked);
+    }
+  });
+
+  // Handle edit/delete clicks
+  table.addEventListener('click', (ev) => {
+    const btnEdit = ev.target.closest('[data-edit]');
+    if (btnEdit) {
+      this.openEdit(btnEdit.dataset.id);
+      return;
+    }
+    const btnDel = ev.target.closest('[data-del]');
+    if (btnDel) {
+      this.delete(btnDel.dataset.id);
+      return;
+    }
+  });
+}
+
 </script>
 </body>
 </html>
+
 
 
