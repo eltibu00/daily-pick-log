@@ -103,10 +103,19 @@
 
     // ---- UI helpers
     formatDate(d){
-      if(!d) return '';
-      const dt = new Date(d);
-      return isNaN(dt) ? d : dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    }
+  if (!d) return '';
+  // If it's a plain yyyy-mm-dd, parse as LOCAL to avoid UTC shift
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    const [yy, mm, dd] = d.split('-').map(Number);
+    const dt = new Date(yy, mm - 1, dd); // local
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  // Otherwise, let Date parse (timestamps like 2025-11-12T05:00:00.000Z)
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 
     filtered(){
       const t = this.state.search.toLowerCase();
@@ -414,8 +423,24 @@
             <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
               <label class="flex items-center gap-2"><input type="checkbox" ${e.bolProvided?'checked':''} onchange="app.state.editing.bolProvided=this.checked"> BOL</label>
               <label class="flex items-center gap-2"><input type="checkbox" ${e.printedByOps?'checked':''} onchange="app.state.editing.printedByOps=this.checked"> OPS</label>
-              <label class="flex items-center gap-2"><input type="checkbox" ${e.pickupComplete?'checked':''}
-                onchange="(this.checked)?(app.state.editing.pickupComplete=true, app.state.editing.completedDate=new Date().toISOString().split('T')[0]):(app.state.editing.pickupComplete=false, app.state.editing.completedDate='')"> Complete</label>
+              <label class="flex items-center gap-2">
+  <input type="checkbox" ${e.pickupComplete ? 'checked' : ''}
+    onchange="
+      if (this.checked) {
+        const n = new Date();
+        const y = n.getFullYear();
+        const m = String(n.getMonth() + 1).padStart(2, '0');
+        const d = String(n.getDate()).padStart(2, '0');
+        app.state.editing.pickupComplete = true;
+        app.state.editing.completedDate = `${y}-${m}-${d}`;
+      } else {
+        app.state.editing.pickupComplete = false;
+        app.state.editing.completedDate = '';
+      }
+    ">
+  Complete
+</label>
+
               <label class="flex items-center gap-2"><input type="checkbox" ${e.qualityCheck?'checked':''} onchange="app.state.editing.qualityCheck=this.checked"> QC</label>
             </div>
             <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.editing.comments=this.value">${e.comments||''}</textarea></div>
@@ -438,3 +463,4 @@
   </script>
 </body>
 </html>
+
