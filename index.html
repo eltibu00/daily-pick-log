@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Daily Pickup Log</title>
+  <link rel="icon" href="data:,"> <!-- silence favicon 404 -->
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @keyframes spin { to { transform: rotate(360deg);} }
@@ -11,411 +12,429 @@
   </style>
 </head>
 <body class="bg-gray-50">
-<div id="app"></div>
+  <div id="app"></div>
 
-<script>
-// ================== CONFIG ==================
-const CONFIG = {
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec', // <-- update if you redeploy
-  SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk', // for "Open Sheet" button only
-  SHEET_NAME: 'Sheet1'
-};
+  <script>
+  // ================== CONFIG ==================
+  const CONFIG = {
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec',
+    SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
+    SHEET_NAME: 'Sheet1'
+  };
 
-// ============== Sheets API wrapper (via Apps Script) ==============
-class GoogleSheetsDB {
-  constructor(cfg){ this.url = cfg.SCRIPT_URL; }
+  // ============== Sheets API wrapper (via Apps Script) ==============
+  class GoogleSheetsDB {
+    constructor(cfg){ this.url = cfg.SCRIPT_URL; }
 
-  async getAllEntries(){
-    const r = await fetch(`${this.url}?action=getAllEntries`);
-    return (await r.json()).data || [];
-  }
-  async addEntry(entry){
-    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
-    return r.json();
-  }
-  async updateEntryById(id, entry){
-    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
-    return r.json();
-  }
-  async deleteEntryById(id){
-    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
-    return r.json();
-  }
-  async archiveCompleted(){
-    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
-    return r.json();
-  }
-}
-
-// ================== App ==================
-class PickupLogApp {
-  constructor(){
-    this.db = new GoogleSheetsDB(CONFIG);
-    this.state = {
-      userName: localStorage.getItem('pickupLogUser') || '',
-      showUserModal: !localStorage.getItem('pickupLogUser'),
-      entries: [],
-      search: '',
-      filter: 'all',
-      stats: { total: 0, completed: 0, pending: 0, issues: 0 },
-      showAdd: false,
-      editing: null
-    };
-    this.init();
+    async getAllEntries(){
+      const r = await fetch(`${this.url}?action=getAllEntries`);
+      const j = await r.json();
+      return j.success ? j.data : [];
+    }
+    async addEntry(entry){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
+      return r.json();
+    }
+    async updateEntryById(id, entry){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
+      return r.json();
+    }
+    async deleteEntryById(id){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
+      return r.json();
+    }
+    async archiveCompleted(){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
+      return r.json();
+    }
   }
 
-  emptyForm(){
-    return {
-      id: '', date: new Date().toISOString().split('T')[0], client: '', shipTo: '',
-      order: '', pallets: '', carrier: '', pickupNum: '',
-      scheduledDate: '', bolProvided: false, printedByOps: false,
-      pickupComplete: false, completedDate: '', qualityCheck: false, comments: ''
-    };
-  }
-
-  async init(){
-    if (this.state.userName) { await this.load(); setInterval(()=>this.load(), 120000); }
-    this.render();
-  }
-
-  async load(){
-    const data = await this.db.getAllEntries();
-    this.state.entries = data;
-    const completed = data.filter(e=>e.pickupComplete).length;
-    const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
-    this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
-    this.render();
-  }
-
-  // ---- UI helpers
-  formatDate(d){ if(!d) return ''; const dt = new Date(d); return isNaN(dt)? d : dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
-  filtered(){
-    const t = this.state.search.toLowerCase();
-    return this.state.entries.filter(e=>{
-      const hit = (e.client||'').toLowerCase().includes(t)
-        || (e.shipTo||'').toLowerCase().includes(t)
-        || (e.order||'').toLowerCase().includes(t)
-        || (e.carrier||'').toLowerCase().includes(t)
-        || (e.pickupNum||'').toLowerCase().includes(t);
-      const f  = this.state.filter;
-      const ok = f==='all' || (f==='completed'&&e.pickupComplete) || (f==='pending'&&!e.pickupComplete) || (f==='issues'&&(e.pickupComplete&&!e.qualityCheck));
-      return hit && ok;
-    });
-  }
-
-  // ---- CRUD
-  async add(){
-    const fd = this.state.newForm;
-    await this.db.addEntry(fd);
-    this.state.showAdd=false; await this.load();
-  }
- async updateField(id, field, value) {
-  const i = this.state.entries.findIndex(e => String(e.id) === String(id));
-  if (i < 0) return;
-
-  const entry = { ...this.state.entries[i], [field]: value };
-  if (field === 'pickupComplete') {
-    entry.completedDate = value ? new Date().toISOString().split('T')[0] : '';
-  }
-
-  try {
-    await this.db.updateEntryById(id, entry);
-    this.state.entries[i] = entry;
-    // refresh UI and stats
-    const data = this.state.entries;
-    const completed = data.filter(e=>e.pickupComplete).length;
-    const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
-    this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
-    this.render();
-  } catch (err) {
-    console.error('updateField failed', err);
-    alert('Update failed. Refresh and try again.');
-    await this.load();
-  }
-}
-
-
-  async delete(id){
-    if(!confirm('Delete this entry?')) return;
-    await this.db.deleteEntryById(id);
-    await this.load();
-  }
-
-  // ---- Edit modal
-  openEdit(id){ const e=this.state.entries.find(x=>x.id===id); if(!e) return; this.state.editing = {...e}; this.render(); }
-  closeEdit(){ this.state.editing=null; this.render(); }
-  async saveEdit(){ const e=this.state.editing; await this.db.updateEntryById(e.id, e); this.state.editing=null; await this.load(); }
-
-  // ---- Archive
-  async archive(){
-    const res = await this.db.archiveCompleted();
-    alert(`Archived pickups: ${res.archived||0}`);
-    await this.load();
-  }
-
-  // ---- User
-  setUser(name){ if(!name) return; localStorage.setItem('pickupLogUser',name); this.state.userName=name; this.state.showUserModal=false; this.init(); }
-
-  // ================== Render ==================
-  render(){
-    const app=document.getElementById('app');
-
-    if(this.state.showUserModal){
-      app.innerHTML=`
-        <div class="min-h-screen flex items-center justify-center">
-          <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full">
-            <h2 class="text-2xl font-bold mb-2 text-indigo-900">Welcome</h2>
-            <p class="text-gray-600 mb-4">Enter your name to continue.</p>
-            <input id="uname" class="w-full border rounded px-3 py-2 mb-3" placeholder="Your name">
-            <button id="ustart" class="w-full bg-indigo-600 text-white rounded px-3 py-2">Continue</button>
-          </div>
-        </div>`;
-      document.getElementById('ustart').onclick=()=>this.setUser(document.getElementById('uname').value.trim());
-      return;
+  // ================== App ==================
+  class PickupLogApp {
+    constructor(){
+      this.db = new GoogleSheetsDB(CONFIG);
+      this.state = {
+        userName: localStorage.getItem('pickupLogUser') || '',
+        showUserModal: !localStorage.getItem('pickupLogUser'),
+        entries: [],
+        search: '',
+        filter: 'all',
+        stats: { total: 0, completed: 0, pending: 0, issues: 0 },
+        showAdd: false,
+        editing: null,
+        newForm: null
+      };
+      this.init();
     }
 
-    const rows = this.filtered().map(e => `
-  <tr class="hover:bg-gray-50" data-id="${e.id}">
-    <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
-    <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
-    <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
-    <td class="px-4 py-3 text-sm">${e.order||''}</td>
-    <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
-    <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
-    <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
-    <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
+    emptyForm(){
+      return {
+        id: '',
+        date: new Date().toISOString().split('T')[0],
+        client: '',
+        shipTo: '',
+        order: '',
+        pallets: '',
+        carrier: '',
+        pickupNum: '',
+        scheduledDate: '',
+        bolProvided: false,
+        printedByOps: false,
+        pickupComplete: false,
+        completedDate: '',
+        qualityCheck: false,
+        comments: ''
+      };
+    }
 
-    <td class="px-4 py-3 text-center">
-      <input type="checkbox" class="w-5 h-5 cursor-pointer"
-             data-field="bolProvided" ${e.bolProvided ? 'checked' : ''}>
-    </td>
-    <td class="px-4 py-3 text-center">
-      <input type="checkbox" class="w-5 h-5 cursor-pointer"
-             data-field="printedByOps" ${e.printedByOps ? 'checked' : ''}>
-    </td>
+    async init(){
+      if (this.state.userName) { await this.load(); setInterval(()=>this.load(), 120000); }
+      this.render();
+    }
 
-    <!-- ✅ Complete checkbox -->
-    <td class="px-4 py-3 text-center">
-      <input type="checkbox" class="w-5 h-5 cursor-pointer"
-             data-field="pickupComplete" ${e.pickupComplete ? 'checked' : ''}>
-    </td>
+    async load(){
+      const data = await this.db.getAllEntries();
+      this.state.entries = data;
+      const completed = data.filter(e=>e.pickupComplete).length;
+      const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
+      this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
+      this.render();
+    }
 
-    <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
-    <td class="px-4 py-3 text-center">
-      <input type="checkbox" class="w-5 h-5 cursor-pointer"
-             data-field="qualityCheck" ${e.qualityCheck ? 'checked' : ''}>
-    </td>
-    <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
-    <td class="px-4 py-3 text-center">
-      <button class="text-indigo-600 mr-2" title="Edit" data-edit data-id="${e.id}">✏️</button>
-      <button class="text-red-600" title="Delete" data-del data-id="${e.id}">🗑️</button>
-    </td>
-  </tr>
-`).join('');
+    // ---- UI helpers
+    formatDate(d){
+      if(!d) return '';
+      const dt = new Date(d);
+      return isNaN(dt) ? d : dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    }
 
+    filtered(){
+      const t = this.state.search.toLowerCase();
+      return this.state.entries.filter(e=>{
+        const hit = (e.client||'').toLowerCase().includes(t)
+          || (e.shipTo||'').toLowerCase().includes(t)
+          || (e.order||'').toLowerCase().includes(t)
+          || (e.carrier||'').toLowerCase().includes(t)
+          || (e.pickupNum||'').toLowerCase().includes(t);
+        const f = this.state.filter;
+        const ok = f==='all' || (f==='completed'&&e.pickupComplete) || (f==='pending'&&!e.pickupComplete) || (f==='issues'&&(e.pickupComplete&&!e.qualityCheck));
+        return hit && ok;
+      });
+    }
 
-    app.innerHTML=`
-      <div class="p-6">
-        <!-- header -->
-        <div class="bg-white rounded-lg shadow p-6 mb-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
-              <p class="text-gray-600">Transportation and Customer Service Operations</p>
-              <p class="text-sm text-gray-500 mt-1">Logged in as: <span class="font-semibold text-indigo-600">${this.state.userName}</span></p>
+    // ---- CRUD
+    async add(){
+      const fd = this.state.newForm;
+      await this.db.addEntry(fd);
+      this.state.showAdd = false;
+      await this.load();
+    }
+
+    async updateField(id, field, value) {
+      const i = this.state.entries.findIndex(e => String(e.id) === String(id));
+      if (i < 0) return;
+      const entry = { ...this.state.entries[i], [field]: value };
+      if (field === 'pickupComplete') {
+        entry.completedDate = value ? new Date().toISOString().split('T')[0] : '';
+      }
+      try {
+        await this.db.updateEntryById(id, entry);
+        this.state.entries[i] = entry;
+        const data = this.state.entries;
+        const completed = data.filter(e=>e.pickupComplete).length;
+        const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
+        this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
+        this.render();
+      } catch (err) {
+        console.error('updateField failed', err);
+        alert('Update failed. Refresh and try again.');
+        await this.load();
+      }
+    }
+
+    async delete(id){
+      if(!confirm('Delete this entry?')) return;
+      await this.db.deleteEntryById(id);
+      await this.load();
+    }
+
+    // ---- Edit modal
+    openEdit(id){
+      const e = this.state.entries.find(x=>String(x.id)===String(id));
+      if(!e) return;
+      this.state.editing = { ...e };
+      this.render();
+    }
+    closeEdit(){ this.state.editing=null; this.render(); }
+    async saveEdit(){
+      const e = this.state.editing;
+      await this.db.updateEntryById(e.id, e);
+      this.state.editing=null;
+      await this.load();
+    }
+
+    // ---- Archive
+    async archive(){
+      const res = await this.db.archiveCompleted();
+      alert(`Archived pickups: ${res.archived||0}`);
+      await this.load();
+    }
+
+    // ---- User
+    setUser(name){
+      if(!name) return;
+      localStorage.setItem('pickupLogUser', name);
+      this.state.userName = name;
+      this.state.showUserModal = false;
+      this.init();
+    }
+
+    // ---- Event delegation for table (called after render)
+    bindTableEvents() {
+      const table = document.querySelector('tbody');
+      if (!table) return;
+
+      table.onchange = (ev) => {
+        const t = ev.target;
+        if (t.matches('input[type="checkbox"][data-field]')) {
+          const row = t.closest('tr[data-id]');
+          const id = row?.dataset.id;
+          const field = t.dataset.field;
+          if (id && field) this.updateField(id, field, t.checked);
+        }
+      };
+
+      table.onclick = (ev) => {
+        const btnEdit = ev.target.closest('[data-edit]');
+        if (btnEdit) { this.openEdit(btnEdit.dataset.id); return; }
+
+        const btnDel = ev.target.closest('[data-del]');
+        if (btnDel)  { this.delete(btnDel.dataset.id);    return; }
+      };
+    }
+
+    // ================== Render ==================
+    render(){
+      const el = document.getElementById('app');
+
+      if(this.state.showUserModal){
+        el.innerHTML = `
+          <div class="min-h-screen flex items-center justify-center">
+            <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full">
+              <h2 class="text-2xl font-bold mb-2 text-indigo-900">Welcome</h2>
+              <p class="text-gray-600 mb-4">Enter your name to continue.</p>
+              <input id="uname" class="w-full border rounded px-3 py-2 mb-3" placeholder="Your name">
+              <button id="ustart" class="w-full bg-indigo-600 text-white rounded px-3 py-2">Continue</button>
             </div>
-            <div class="flex gap-3">
-              <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
-              <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.showAdd=true; app.newForm=app.emptyForm(); app.render()">➕ Add Entry</button>
-              <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive BOLs</button>
-              <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Open Sheet</button>
+          </div>`;
+        document.getElementById('ustart').onclick = () => this.setUser(document.getElementById('uname').value.trim());
+        return;
+      }
+
+      const rows = this.filtered().map(e => `
+        <tr class="hover:bg-gray-50" data-id="${e.id}">
+          <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
+          <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
+          <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
+          <td class="px-4 py-3 text-sm">${e.order||''}</td>
+          <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
+          <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
+          <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
+          <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
+
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" class="w-5 h-5 cursor-pointer" data-field="bolProvided" ${e.bolProvided ? 'checked' : ''}>
+          </td>
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" class="w-5 h-5 cursor-pointer" data-field="printedByOps" ${e.printedByOps ? 'checked' : ''}>
+          </td>
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" class="w-5 h-5 cursor-pointer" data-field="pickupComplete" ${e.pickupComplete ? 'checked' : ''}>
+          </td>
+
+          <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" class="w-5 h-5 cursor-pointer" data-field="qualityCheck" ${e.qualityCheck ? 'checked' : ''}>
+          </td>
+          <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
+          <td class="px-4 py-3 text-center">
+            <button class="text-indigo-600 mr-2" title="Edit" data-edit data-id="${e.id}">✏️</button>
+            <button class="text-red-600" title="Delete" data-del data-id="${e.id}">🗑️</button>
+          </td>
+        </tr>
+      `).join('');
+
+      el.innerHTML = `
+        <div class="p-6">
+          <!-- header -->
+          <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
+                <p class="text-gray-600">Transportation and Customer Service Operations</p>
+                <p class="text-sm text-gray-500 mt-1">Logged in as: <span class="font-semibold text-indigo-600">${this.state.userName}</span></p>
+              </div>
+              <div class="flex gap-3">
+                <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
+                <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.showAdd=true; app.newForm=app.emptyForm(); app.render()">➕ Add Entry</button>
+                <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive BOLs</button>
+                <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Open Sheet</button>
+              </div>
             </div>
+            <div class="mt-3 text-sm text-gray-500">Powered by Google Sheets • Last updated: ${new Date().toLocaleTimeString()} • Auto-refresh every 2 minutes</div>
           </div>
-          <div class="mt-3 text-sm text-gray-500">Powered by Google Sheets • Last updated: ${new Date().toLocaleTimeString()} • Auto-refresh every 2 minutes</div>
-        </div>
 
-        <!-- stats -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          ${this.statCard('Total Pickups', this.state.stats.total, '📦')}
-          ${this.statCard('Completed', this.state.stats.completed, '✅')}
-          ${this.statCard('Pending',   this.state.stats.pending,   '⏳')}
-          ${this.statCard('Quality Issues', this.state.stats.issues, '⚠️')}
-        </div>
-
-        <!-- search/filter -->
-        <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-4">
-          <div class="flex-1 relative">
-            <input class="w-full border rounded px-3 py-2 pl-9" placeholder="Search by client, ship to, order, carrier, or pickup number..."
-              value="${this.state.search}" oninput="app.state.search=this.value; app.render()">
-            <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+          <!-- stats -->
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            ${this.statCard('Total Pickups', this.state.stats.total, '📦')}
+            ${this.statCard('Completed', this.state.stats.completed, '✅')}
+            ${this.statCard('Pending',   this.state.stats.pending,   '⏳')}
+            ${this.statCard('Quality Issues', this.state.stats.issues, '⚠️')}
           </div>
-          <select class="border rounded px-3 py-2" onchange="app.state.filter=this.value; app.render()">
-            <option value="all"       ${this.state.filter==='all'?'selected':''}>All Entries</option>
-            <option value="completed" ${this.state.filter==='completed'?'selected':''}>Completed</option>
-            <option value="pending"   ${this.state.filter==='pending'?'selected':''}>Pending</option>
-            <option value="issues"    ${this.state.filter==='issues'?'selected':''}>Quality Issues</option>
-          </select>
-        </div>
 
-        <!-- table -->
-        <div class="bg-white rounded-lg shadow overflow-x-auto">
-          <table class="w-full">
-            <thead class="bg-indigo-900 text-white">
-              <tr>
-                <th class="px-4 py-3 text-left">Date</th>
-                <th class="px-4 py-3 text-left">Client</th>
-                <th class="px-4 py-3 text-left">Ship To</th>
-                <th class="px-4 py-3 text-left">Order#</th>
-                <th class="px-4 py-3 text-left">Pallets</th>
-                <th class="px-4 py-3 text-left">Carrier</th>
-                <th class="px-4 py-3 text-left">Pick up #</th>
-                <th class="px-4 py-3 text-left">Scheduled</th>
-                <th class="px-4 py-3 text-center">BOL</th>
-                <th class="px-4 py-3 text-center">OPS</th>
-                <th class="px-4 py-3 text-center">Complete</th>
-                <th class="px-4 py-3 text-left">Completed</th>
-                <th class="px-4 py-3 text-center">QC</th>
-                <th class="px-4 py-3 text-left">Comments</th>
-                <th class="px-4 py-3 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y">
-              ${rows || `<tr><td colspan="15" class="text-center py-10 text-gray-500">No entries</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- footer -->
-        <div class="mt-6 bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
-          <h3 class="font-semibold text-blue-900 mb-1">Quality Check Requirements</h3>
-          <p class="text-sm text-blue-800">Before marking "Pickup Complete", verify packing quality and BOL accuracy.</p>
-        </div>
-      </div>
-
-      ${this.state.showAdd ? this.addModal() : ''}
-      ${this.state.editing ? this.editModal() : ''}
-    `;
-  }
-
-  statCard(label, value, icon){
-    return `<div class="bg-white p-4 rounded shadow"><div class="flex items-center justify-between">
-      <div><p class="text-gray-500 text-sm">${label}</p><p class="text-2xl font-bold">${value}</p></div>
-      <div class="text-3xl">${icon}</div></div></div>`;
-  }
-
-  addModal(){
-    const f = this.state.newForm || this.emptyForm();
-    return `
-    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-bold text-indigo-900">Add Pickup</h2>
-          <button class="text-2xl" onclick="app.state.showAdd=false; app.render()">×</button>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.date}" onchange="app.state.newForm.date=this.value"></div>
-          <div><label class="text-sm">Client</label>
-            <select class="w-full border rounded px-3 py-2" onchange="app.state.newForm.client=this.value">
-              <option value="">Select client</option>
-              ${['Pierre Fabre','BR','Promix','Maeleys','Natura','Granado','VBB','Maison','Yves Roche','LMC','Ulta','Bloomingdales','Deliverzen','Nordstrom'].map(c=>`<option ${f.client===c?'selected':''}>${c}</option>`).join('')}
+          <!-- search/filter -->
+          <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-4">
+            <div class="flex-1 relative">
+              <input class="w-full border rounded px-3 py-2 pl-9" placeholder="Search by client, ship to, order, carrier, or pickup number..."
+                value="${this.state.search}" oninput="app.state.search=this.value; app.render()">
+              <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+            </div>
+            <select class="border rounded px-3 py-2" onchange="app.state.filter=this.value; app.render()">
+              <option value="all"       ${this.state.filter==='all'?'selected':''}>All Entries</option>
+              <option value="completed" ${this.state.filter==='completed'?'selected':''}>Completed</option>
+              <option value="pending"   ${this.state.filter==='pending'?'selected':''}>Pending</option>
+              <option value="issues"    ${this.state.filter==='issues'?'selected':''}>Quality Issues</option>
             </select>
           </div>
-          <div><label class="text-sm">Ship To / Retailer</label><input class="w-full border rounded px-3 py-2" value="${f.shipTo}" onchange="app.state.newForm.shipTo=this.value"></div>
-          <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${f.order}" onchange="app.state.newForm.order=this.value"></div>
-          <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets}" onchange="app.state.newForm.pallets=this.value"></div>
-          <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${f.carrier}" onchange="app.state.newForm.carrier=this.value"></div>
-          <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${f.pickupNum}" onchange="app.state.newForm.pickupNum=this.value"></div>
-          <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate}" onchange="app.state.newForm.scheduledDate=this.value"></div>
-          <div class="col-span-2 grid grid-cols-3 gap-4 mt-2">
-            <label class="flex items-center gap-2"><input type="checkbox" ${f.bolProvided?'checked':''} onchange="app.state.newForm.bolProvided=this.checked"> BOL</label>
-            <label class="flex items-center gap-2"><input type="checkbox" ${f.printedByOps?'checked':''} onchange="app.state.newForm.printedByOps=this.checked"> OPS</label>
-            <label class="flex items-center gap-2"><input type="checkbox" ${f.qualityCheck?'checked':''} onchange="app.state.newForm.qualityCheck=this.checked"> QC</label>
+
+          <!-- table -->
+          <div class="bg-white rounded-lg shadow overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-indigo-900 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left">Date</th>
+                  <th class="px-4 py-3 text-left">Client</th>
+                  <th class="px-4 py-3 text-left">Ship To</th>
+                  <th class="px-4 py-3 text-left">Order#</th>
+                  <th class="px-4 py-3 text-left">Pallets</th>
+                  <th class="px-4 py-3 text-left">Carrier</th>
+                  <th class="px-4 py-3 text-left">Pick up #</th>
+                  <th class="px-4 py-3 text-left">Scheduled</th>
+                  <th class="px-4 py-3 text-center">BOL</th>
+                  <th class="px-4 py-3 text-center">OPS</th>
+                  <th class="px-4 py-3 text-center">Complete</th>
+                  <th class="px-4 py-3 text-left">Completed</th>
+                  <th class="px-4 py-3 text-center">QC</th>
+                  <th class="px-4 py-3 text-left">Comments</th>
+                  <th class="px-4 py-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                ${rows || `<tr><td colspan="15" class="text-center py-10 text-gray-500">No entries</td></tr>`}
+              </tbody>
+            </table>
           </div>
-          <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.newForm.comments=this.value">${f.comments||''}</textarea></div>
+
+          <!-- footer -->
+          <div class="mt-6 bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
+            <h3 class="font-semibold text-blue-900 mb-1">Quality Check Requirements</h3>
+            <p class="text-sm text-blue-800">Before marking "Pickup Complete", verify packing quality and BOL accuracy.</p>
+          </div>
         </div>
-        <div class="flex gap-3 mt-5">
-          <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.add()">Add</button>
-          <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.state.showAdd=false; app.render()">Cancel</button>
+
+        ${this.state.showAdd ? this.addModal() : ''}
+        ${this.state.editing ? this.editModal() : ''}
+      `;
+      this.bindTableEvents(); // attach delegated events
+    }
+
+    statCard(label, value, icon){
+      return `<div class="bg-white p-4 rounded shadow"><div class="flex items-center justify-between">
+        <div><p class="text-gray-500 text-sm">${label}</p><p class="text-2xl font-bold">${value}</p></div>
+        <div class="text-3xl">${icon}</div></div></div>`;
+    }
+
+    addModal(){
+      const f = this.state.newForm || this.emptyForm();
+      const clients = ['Pierre Fabre','BR','Promix','Maeleys','Natura','Granado','VBB','Maison','Yves Roche','LMC','Ulta','Bloomingdales','Deliverzen','Nordstrom'];
+      return `
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-indigo-900">Add Pickup</h2>
+            <button class="text-2xl" onclick="app.state.showAdd=false; app.render()">×</button>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.date}" onchange="app.state.newForm.date=this.value"></div>
+            <div><label class="text-sm">Client</label>
+              <select class="w-full border rounded px-3 py-2" onchange="app.state.newForm.client=this.value">
+                <option value="">Select client</option>
+                ${clients.map(c=>`<option ${f.client===c?'selected':''}>${c}</option>`).join('')}
+              </select>
+            </div>
+            <div><label class="text-sm">Ship To / Retailer</label><input class="w-full border rounded px-3 py-2" value="${f.shipTo}" onchange="app.state.newForm.shipTo=this.value"></div>
+            <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${f.order}" onchange="app.state.newForm.order=this.value"></div>
+            <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets}" onchange="app.state.newForm.pallets=this.value"></div>
+            <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${f.carrier}" onchange="app.state.newForm.carrier=this.value"></div>
+            <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${f.pickupNum}" onchange="app.state.newForm.pickupNum=this.value"></div>
+            <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate}" onchange="app.state.newForm.scheduledDate=this.value"></div>
+            <div class="col-span-2 grid grid-cols-3 gap-4 mt-2">
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.bolProvided?'checked':''} onchange="app.state.newForm.bolProvided=this.checked"> BOL</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.printedByOps?'checked':''} onchange="app.state.newForm.printedByOps=this.checked"> OPS</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.qualityCheck?'checked':''} onchange="app.state.newForm.qualityCheck=this.checked"> QC</label>
+            </div>
+            <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.newForm.comments=this.value">${f.comments||''}</textarea></div>
+          </div>
+          <div class="flex gap-3 mt-5">
+            <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.add()">Add</button>
+            <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.state.showAdd=false; app.render()">Cancel</button>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+    }
+
+    editModal(){
+      const e = this.state.editing;
+      return `
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-indigo-900">Edit Pickup</h2>
+            <button class="text-2xl" onclick="app.closeEdit()">×</button>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.date||''}" onchange="app.state.editing.date=this.value"></div>
+            <div><label class="text-sm">Client</label><input class="w-full border rounded px-3 py-2" value="${e.client||''}" onchange="app.state.editing.client=this.value"></div>
+            <div><label class="text-sm">Ship To</label><input class="w-full border rounded px-3 py-2" value="${e.shipTo||''}" onchange="app.state.editing.shipTo=this.value"></div>
+            <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${e.order||''}" onchange="app.state.editing.order=this.value"></div>
+            <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${e.pallets||''}" onchange="app.state.editing.pallets=this.value"></div>
+            <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${e.carrier||''}" onchange="app.state.editing.carrier=this.value"></div>
+            <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${e.pickupNum||''}" onchange="app.state.editing.pickupNum=this.value"></div>
+            <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value"></div>
+            <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
+              <label class="flex items-center gap-2"><input type="checkbox" ${e.bolProvided?'checked':''} onchange="app.state.editing.bolProvided=this.checked"> BOL</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${e.printedByOps?'checked':''} onchange="app.state.editing.printedByOps=this.checked"> OPS</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${e.pickupComplete?'checked':''}
+                onchange="(this.checked)?(app.state.editing.pickupComplete=true, app.state.editing.completedDate=new Date().toISOString().split('T')[0]):(app.state.editing.pickupComplete=false, app.state.editing.completedDate='')"> Complete</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${e.qualityCheck?'checked':''} onchange="app.state.editing.qualityCheck=this.checked"> QC</label>
+            </div>
+            <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.editing.comments=this.value">${e.comments||''}</textarea></div>
+          </div>
+          <div class="flex gap-3 mt-5">
+            <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.saveEdit()">Save</button>
+            <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.closeEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    }
   }
 
-  editModal(){
-    const e=this.state.editing;
-    return `
-    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-bold text-indigo-900">Edit Pickup</h2>
-          <button class="text-2xl" onclick="app.closeEdit()">×</button>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-          <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.date||''}" onchange="app.state.editing.date=this.value"></div>
-          <div><label class="text-sm">Client</label><input class="w-full border rounded px-3 py-2" value="${e.client||''}" onchange="app.state.editing.client=this.value"></div>
-          <div><label class="text-sm">Ship To</label><input class="w-full border rounded px-3 py-2" value="${e.shipTo||''}" onchange="app.state.editing.shipTo=this.value"></div>
-          <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${e.order||''}" onchange="app.state.editing.order=this.value"></div>
-          <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${e.pallets||''}" onchange="app.state.editing.pallets=this.value"></div>
-          <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${e.carrier||''}" onchange="app.state.editing.carrier=this.value"></div>
-          <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${e.pickupNum||''}" onchange="app.state.editing.pickupNum=this.value"></div>
-          <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value"></div>
-          <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
-            <label class="flex items-center gap-2"><input type="checkbox" ${e.bolProvided?'checked':''} onchange="app.state.editing.bolProvided=this.checked"> BOL</label>
-            <label class="flex items-center gap-2"><input type="checkbox" ${e.printedByOps?'checked':''} onchange="app.state.editing.printedByOps=this.checked"> OPS</label>
-            <label class="flex items-center gap-2"><input type="checkbox" ${e.pickupComplete?'checked':''}
-              onchange="(this.checked)?(app.state.editing.pickupComplete=true, app.state.editing.completedDate=new Date().toISOString().split('T')[0]):(app.state.editing.pickupComplete=false, app.state.editing.completedDate='')"> Complete</label>
-            <label class="flex items-center gap-2"><input type="checkbox" ${e.qualityCheck?'checked':''} onchange="app.state.editing.qualityCheck=this.checked"> QC</label>
-          </div>
-          <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.editing.comments=this.value">${e.comments||''}</textarea></div>
-        </div>
-        <div class="flex gap-3 mt-5">
-          <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.saveEdit()">Save</button>
-          <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.closeEdit()">Cancel</button>
-        </div>
-      </div>
-    </div>`;
-  }
-}
-
-let app;
-window.addEventListener('DOMContentLoaded', () => {
-  app = new PickupLogApp();
-  // 🔑 Ensure inline HTML handlers (onclick/onchange="app.*") always see the instance
-  window.app = app;
-});
-  bindTableEvents() {
-  const table = document.querySelector('tbody');
-  if (!table) return;
-
-  // Handle checkbox changes (BOL, OPS, Complete, QC)
-  table.addEventListener('change', (ev) => {
-    const target = ev.target;
-    if (target.matches('input[type="checkbox"][data-field]')) {
-      const row = target.closest('tr[data-id]');
-      const id = row?.dataset.id;
-      const field = target.dataset.field;
-      if (id && field) this.updateField(id, field, target.checked);
-    }
+  // Init + expose globally for inline modal buttons
+  let app;
+  window.addEventListener('DOMContentLoaded', () => {
+    app = new PickupLogApp();
+    window.app = app;
   });
-
-  // Handle edit/delete clicks
-  table.addEventListener('click', (ev) => {
-    const btnEdit = ev.target.closest('[data-edit]');
-    if (btnEdit) {
-      this.openEdit(btnEdit.dataset.id);
-      return;
-    }
-    const btnDel = ev.target.closest('[data-del]');
-    if (btnDel) {
-      this.delete(btnDel.dataset.id);
-      return;
-    }
-  });
-}
-
-</script>
+  </script>
 </body>
 </html>
-
-
-
