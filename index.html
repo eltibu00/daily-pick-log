@@ -16,7 +16,7 @@
 <script>
 // ================== CONFIG ==================
 const CONFIG = {
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec', // <-- update if you redeploy
+  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec', // <-- update if you redeploy
   SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk', // for "Open Sheet" button only
   SHEET_NAME: 'Sheet1'
 };
@@ -109,28 +109,26 @@ class PickupLogApp {
     await this.db.addEntry(fd);
     this.state.showAdd=false; await this.load();
   }
-  async updateField(id, field, value) {
+ async updateField(id, field, value) {
   const i = this.state.entries.findIndex(e => e.id === id);
   if (i < 0) return;
 
-  // Work on a copy
   const entry = { ...this.state.entries[i], [field]: value };
 
-  // Auto-stamp or clear CompletedDate when Complete changes
   if (field === 'pickupComplete') {
     entry.completedDate = value ? new Date().toISOString().split('T')[0] : '';
   }
 
   try {
     await this.db.updateEntryById(id, entry);
-    // Update local state immediately for snappy UI
     this.state.entries[i] = entry;
-    this.calculateStats?.();           // if you have this helper
+    // recalc stats if you have a helper
+    if (typeof this.calculateStats === 'function') this.calculateStats();
     this.render();
   } catch (err) {
     console.error('updateField failed', err);
-    alert('Update failed. Please refresh and try again.');
-    await this.load();                 // fall back to server truth
+    alert('Update failed. Refresh and try again.');
+    await this.load();
   }
 }
 
@@ -362,11 +360,6 @@ class PickupLogApp {
   }
 }
 
-let app;
-window.addEventListener('DOMContentLoaded',()=>{ app=new PickupLogApp(); });
-</script>
-</body>
-</html>
 <script>
 let app;
 window.addEventListener('DOMContentLoaded', () => {
@@ -376,4 +369,5 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-
+</body>
+</html>
