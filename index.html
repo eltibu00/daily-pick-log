@@ -1,783 +1,351 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Pickup Log - Google Sheets Backend</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .animate-spin {
-            animation: spin 1s linear infinite;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Daily Pickup Log</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .animate-spin { animation: spin 1s linear infinite; }
+  </style>
 </head>
 <body class="bg-gray-50">
-    <div id="app"></div>
+<div id="app"></div>
 
-    <script>
-        // ============================================
-        // CONFIGURATION - UPDATE THESE VALUES
-        // ============================================
-        
-     const CONFIG = {
-  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec',
-  SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
+<script>
+// ================== CONFIG ==================
+const CONFIG = {
+  SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec', // <-- update if you redeploy
+  SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk', // for "Open Sheet" button only
   SHEET_NAME: 'Sheet1'
 };
 
+// ============== Sheets API wrapper (via Apps Script) ==============
+class GoogleSheetsDB {
+  constructor(cfg){ this.url = cfg.SCRIPT_URL; }
 
-        // ============================================
-        // GOOGLE SHEETS DATABASE CLASS
-        // ============================================
-
-       class GoogleSheetsDB {
-    constructor(config) {
-        this.config = config;
-        this.scriptUrl = config.SCRIPT_URL;
-    }
-
-    async getAllEntries() {
-        try {
-            const response = await fetch(`${this.scriptUrl}?action=getAllEntries`);
-            const data = await response.json();
-            return data.success ? data.data : [];
-        } catch (error) {
-            console.error('Error fetching entries:', error);
-            return [];
-        }
-    }
-
-    async addEntry(entry) {
-        try {
-            const response = await fetch(this.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
-                body: JSON.stringify({
-                    action: 'addEntry',
-                    entry: entry
-                })
-            });
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error adding entry:', error);
-            throw error;
-        }
-    }
-
-    async updateEntry(rowIndex, entry) {
-        try {
-            const response = await fetch(this.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
-                body: JSON.stringify({
-                    action: 'updateEntry',
-                    rowIndex: rowIndex,
-                    entry: entry
-                })
-            });
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error updating entry:', error);
-            throw error;
-        }
-    }
-
-    async deleteEntry(rowIndex) {
-        try {
-            const response = await fetch(this.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
-                body: JSON.stringify({
-                    action: 'deleteEntry',
-                    rowIndex: rowIndex
-                })
-            });
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error deleting entry:', error);
-            throw error;
-        }
-    }
-
-    async archiveCompleted() {
-        try {
-            const response = await fetch(this.scriptUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // ✅ CORS safe
-                body: JSON.stringify({
-                    action: 'archiveCompleted'
-                })
-            });
-            const data = await response.json();
-            return data;
-        } catch (error) {
-            console.error('Error archiving entries:', error);
-            throw error;
-        }
-    }
+  async getAllEntries(){
+    const r = await fetch(`${this.url}?action=getAllEntries`);
+    return (await r.json()).data || [];
+  }
+  async addEntry(entry){
+    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
+    return r.json();
+  }
+  async updateEntryById(id, entry){
+    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
+    return r.json();
+  }
+  async deleteEntryById(id){
+    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
+    return r.json();
+  }
+  async archiveCompleted(){
+    const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
+    return r.json();
+  }
 }
 
-        // ============================================
-        // APPLICATION CLASS
-        // ============================================
+// ================== App ==================
+class PickupLogApp {
+  constructor(){
+    this.db = new GoogleSheetsDB(CONFIG);
+    this.state = {
+      userName: localStorage.getItem('pickupLogUser') || '',
+      showUserModal: !localStorage.getItem('pickupLogUser'),
+      entries: [],
+      search: '',
+      filter: 'all',
+      stats: { total: 0, completed: 0, pending: 0, issues: 0 },
+      showAdd: false,
+      editing: null
+    };
+    this.init();
+  }
 
-        class PickupLogApp {
-            constructor() {
-                this.db = new GoogleSheetsDB(CONFIG);
-                this.state = {
-                    entries: [],
-                    stats: { total: 0, completed: 0, pending: 0, issues: 0 },
-                    loading: true,
-                    searchTerm: '',
-                    filterStatus: 'all',
-                    showAddModal: false,
-                    showArchiveModal: false,
-                    userName: localStorage.getItem('pickupLogUser') || '',
-                    showUserModal: !localStorage.getItem('pickupLogUser'),
-                    formData: this.getEmptyForm()
-                };
-                
-                this.init();
-            }
+  emptyForm(){
+    return {
+      id: '', date: new Date().toISOString().split('T')[0], client: '', shipTo: '',
+      order: '', pallets: '', carrier: '', pickupNum: '',
+      scheduledDate: '', bolProvided: false, printedByOps: false,
+      pickupComplete: false, completedDate: '', qualityCheck: false, comments: ''
+    };
+  }
 
-            getEmptyForm() {
-                return {
-                    date: new Date().toISOString().split('T')[0],
-                    client: '',
-                    shipTo: '',          // NEW
-                    order: '',
-                    pallets: '',
-                    carrier: '',
-                    pickupNum: '',
-                    scheduledDate: '',
-                    bolProvided: false,
-                    printedByOps: false,
-                    pickupComplete: false,
-                    completedDate: '',
-                    qualityCheck: false,
-                    comments: ''
-                };
-            }
+  async init(){
+    if (this.state.userName) { await this.load(); setInterval(()=>this.load(), 120000); }
+    this.render();
+  }
 
-            async init() {
-                if (this.state.userName) {
-                    await this.loadEntries();
-                    setInterval(() => this.loadEntries(), 120000); // 2 minutes
-                }
-                this.render();
-            }
+  async load(){
+    const data = await this.db.getAllEntries();
+    this.state.entries = data;
+    const completed = data.filter(e=>e.pickupComplete).length;
+    const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
+    this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
+    this.render();
+  }
 
-            async loadEntries() {
-                this.state.loading = true;
-                this.render();
-                
-                const entries = await this.db.getAllEntries();
-                this.state.entries = entries.filter(e => e.id);
-                this.calculateStats();
-                this.state.loading = false;
-                this.render();
-            }
+  // ---- UI helpers
+  formatDate(d){ if(!d) return ''; const dt = new Date(d); return isNaN(dt)? d : dt.toLocaleDateString('en-US',{month:'short',day:'numeric'}); }
+  filtered(){
+    const t = this.state.search.toLowerCase();
+    return this.state.entries.filter(e=>{
+      const hit = (e.client||'').toLowerCase().includes(t)
+        || (e.shipTo||'').toLowerCase().includes(t)
+        || (e.order||'').toLowerCase().includes(t)
+        || (e.carrier||'').toLowerCase().includes(t)
+        || (e.pickupNum||'').toLowerCase().includes(t);
+      const f  = this.state.filter;
+      const ok = f==='all' || (f==='completed'&&e.pickupComplete) || (f==='pending'&&!e.pickupComplete) || (f==='issues'&&(e.pickupComplete&&!e.qualityCheck));
+      return hit && ok;
+    });
+  }
 
-            calculateStats() {
-                const entries = this.state.entries;
-                this.state.stats = {
-                    total: entries.length,
-                    completed: entries.filter(e => e.pickupComplete).length,
-                    pending: entries.filter(e => !e.pickupComplete).length,
-                    issues: entries.filter(e => e.pickupComplete && !e.qualityCheck).length
-                };
-            }
+  // ---- CRUD
+  async add(){
+    const fd = this.state.newForm;
+    await this.db.addEntry(fd);
+    this.state.showAdd=false; await this.load();
+  }
+  async updateField(id, field, value){
+    const i=this.state.entries.findIndex(e=>e.id===id); if(i<0) return;
+    const entry = {...this.state.entries[i], [field]: value};
+    if(field==='pickupComplete'){ entry.completedDate = value ? new Date().toISOString().split('T')[0] : ''; }
+    await this.db.updateEntryById(id, entry);
+    this.state.entries[i]=entry; this.load();
+  }
+  async delete(id){
+    if(!confirm('Delete this entry?')) return;
+    await this.db.deleteEntryById(id);
+    await this.load();
+  }
 
-            getFilteredEntries() {
-                return this.state.entries.filter(entry => {
-                    const term = this.state.searchTerm.toLowerCase();
-                    const searchMatch = 
-                        entry.client.toLowerCase().includes(term) ||
-                        (entry.shipTo || '').toLowerCase().includes(term) || // NEW
-                        entry.order.toLowerCase().includes(term) ||
-                        entry.carrier.toLowerCase().includes(term) ||
-                        entry.pickupNum.toLowerCase().includes(term);
+  // ---- Edit modal
+  openEdit(id){ const e=this.state.entries.find(x=>x.id===id); if(!e) return; this.state.editing = {...e}; this.render(); }
+  closeEdit(){ this.state.editing=null; this.render(); }
+  async saveEdit(){ const e=this.state.editing; await this.db.updateEntryById(e.id, e); this.state.editing=null; await this.load(); }
 
-                    const filterMatch = 
-                        this.state.filterStatus === 'all' ? true :
-                        this.state.filterStatus === 'completed' ? entry.pickupComplete :
-                        this.state.filterStatus === 'pending' ? !entry.pickupComplete :
-                        this.state.filterStatus === 'issues' ? entry.pickupComplete && !entry.qualityCheck : true;
+  // ---- Archive
+  async archive(){
+    const res = await this.db.archiveCompleted();
+    alert(`Archived pickups: ${res.archived||0}`);
+    await this.load();
+  }
 
-                    return searchMatch && filterMatch;
-                });
-            }
+  // ---- User
+  setUser(name){ if(!name) return; localStorage.setItem('pickupLogUser',name); this.state.userName=name; this.state.showUserModal=false; this.init(); }
 
-            async handleAddEntry() {
-                try {
-                    await this.db.addEntry(this.state.formData);
-                    this.state.showAddModal = false;
-                    this.state.formData = this.getEmptyForm();
-                    await this.loadEntries();
-                } catch (error) {
-                    alert('Error adding entry. Please try again.');
-                }
-            }
+  // ================== Render ==================
+  render(){
+    const app=document.getElementById('app');
 
-            async handleUpdateEntry(id, field, value) {
-                const index = this.state.entries.findIndex(e => e.id === id);
-                if (index === -1) return;
+    if(this.state.showUserModal){
+      app.innerHTML=`
+        <div class="min-h-screen flex items-center justify-center">
+          <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full">
+            <h2 class="text-2xl font-bold mb-2 text-indigo-900">Welcome</h2>
+            <p class="text-gray-600 mb-4">Enter your name to continue.</p>
+            <input id="uname" class="w-full border rounded px-3 py-2 mb-3" placeholder="Your name">
+            <button id="ustart" class="w-full bg-indigo-600 text-white rounded px-3 py-2">Continue</button>
+          </div>
+        </div>`;
+      document.getElementById('ustart').onclick=()=>this.setUser(document.getElementById('uname').value.trim());
+      return;
+    }
 
-                this.state.entries[index][field] = value;
-                
-                try {
-                    await this.db.updateEntry(index, this.state.entries[index]);
-                    this.calculateStats();
-                    this.render();
-                } catch (error) {
-                    alert('Error updating entry. Please try again.');
-                    await this.loadEntries();
-                }
-            }
+    const rows=this.filtered().map(e=>`
+      <tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
+        <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
+        <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
+        <td class="px-4 py-3 text-sm">${e.order||''}</td>
+        <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
+        <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
+        <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
+        <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
+        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.bolProvided?'checked':''}
+            onchange="app.updateField('${e.id}','bolProvided',this.checked)"></td>
+        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.printedByOps?'checked':''}
+            onchange="app.updateField('${e.id}','printedByOps',this.checked)"></td>
+        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.pickupComplete?'checked':''}
+            onchange="app.updateField('${e.id}','pickupComplete',this.checked)"></td>
+        <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
+        <td class="px-4 py-3 text-center"><input type="checkbox" ${e.qualityCheck?'checked':''}
+            onchange="app.updateField('${e.id}','qualityCheck',this.checked)"></td>
+        <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
+        <td class="px-4 py-3 text-center">
+          <button class="text-indigo-600 mr-2" title="Edit" onclick="app.openEdit('${e.id}')">✏️</button>
+          <button class="text-red-600" title="Delete" onclick="app.delete('${e.id}')">🗑️</button>
+        </td>
+      </tr>`).join('');
 
-            async handleDeleteEntry(id) {
-                if (!confirm('Are you sure you want to delete this entry?')) return;
+    app.innerHTML=`
+      <div class="p-6">
+        <!-- header -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
+              <p class="text-gray-600">Transportation and Customer Service Operations</p>
+              <p class="text-sm text-gray-500 mt-1">Logged in as: <span class="font-semibold text-indigo-600">${this.state.userName}</span></p>
+            </div>
+            <div class="flex gap-3">
+              <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
+              <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.showAdd=true; app.newForm=app.emptyForm(); app.render()">➕ Add Entry</button>
+              <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive BOLs</button>
+              <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Open Sheet</button>
+            </div>
+          </div>
+          <div class="mt-3 text-sm text-gray-500">Powered by Google Sheets • Last updated: ${new Date().toLocaleTimeString()} • Auto-refresh every 2 minutes</div>
+        </div>
 
-                const index = this.state.entries.findIndex(e => e.id === id);
-                if (index === -1) return;
+        <!-- stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          ${this.statCard('Total Pickups', this.state.stats.total, '📦')}
+          ${this.statCard('Completed', this.state.stats.completed, '✅')}
+          ${this.statCard('Pending',   this.state.stats.pending,   '⏳')}
+          ${this.statCard('Quality Issues', this.state.stats.issues, '⚠️')}
+        </div>
 
-                try {
-                    await this.db.deleteEntry(index);
-                    await this.loadEntries();
-                } catch (error) {
-                    alert('Error deleting entry. Please try again.');
-                }
-            }
+        <!-- search/filter -->
+        <div class="bg-white rounded-lg shadow p-4 mb-6 flex items-center gap-4">
+          <div class="flex-1 relative">
+            <input class="w-full border rounded px-3 py-2 pl-9" placeholder="Search by client, ship to, order, carrier, or pickup number..."
+              value="${this.state.search}" oninput="app.state.search=this.value; app.render()">
+            <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
+          </div>
+          <select class="border rounded px-3 py-2" onchange="app.state.filter=this.value; app.render()">
+            <option value="all"       ${this.state.filter==='all'?'selected':''}>All Entries</option>
+            <option value="completed" ${this.state.filter==='completed'?'selected':''}>Completed</option>
+            <option value="pending"   ${this.state.filter==='pending'?'selected':''}>Pending</option>
+            <option value="issues"    ${this.state.filter==='issues'?'selected':''}>Quality Issues</option>
+          </select>
+        </div>
 
-            // NEW: run archive via backend
-            async runArchiveBOLs() {
-                if (!confirm('This will move all completed pickups from the dashboard to the Archive sheet. Continue?')) {
-                    return;
-                }
+        <!-- table -->
+        <div class="bg-white rounded-lg shadow overflow-x-auto">
+          <table class="w-full">
+            <thead class="bg-indigo-900 text-white">
+              <tr>
+                <th class="px-4 py-3 text-left">Date</th>
+                <th class="px-4 py-3 text-left">Client</th>
+                <th class="px-4 py-3 text-left">Ship To</th>
+                <th class="px-4 py-3 text-left">Order#</th>
+                <th class="px-4 py-3 text-left">Pallets</th>
+                <th class="px-4 py-3 text-left">Carrier</th>
+                <th class="px-4 py-3 text-left">Pick up #</th>
+                <th class="px-4 py-3 text-left">Scheduled</th>
+                <th class="px-4 py-3 text-center">BOL</th>
+                <th class="px-4 py-3 text-center">OPS</th>
+                <th class="px-4 py-3 text-center">Complete</th>
+                <th class="px-4 py-3 text-left">Completed</th>
+                <th class="px-4 py-3 text-center">QC</th>
+                <th class="px-4 py-3 text-left">Comments</th>
+                <th class="px-4 py-3 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              ${rows || `<tr><td colspan="15" class="text-center py-10 text-gray-500">No entries</td></tr>`}
+            </tbody>
+          </table>
+        </div>
 
-                try {
-                    const result = await this.db.archiveCompleted();
-                    alert(`Archived pickups: ${result.archived || 0}`);
-                    await this.loadEntries();
-                    this.state.showArchiveModal = false;
-                    this.render();
-                } catch (error) {
-                    alert('Error archiving pickups. Please try again.');
-                    console.error(error);
-                }
-            }
+        <!-- footer -->
+        <div class="mt-6 bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
+          <h3 class="font-semibold text-blue-900 mb-1">Quality Check Requirements</h3>
+          <p class="text-sm text-blue-800">Before marking "Pickup Complete", verify packing quality and BOL accuracy.</p>
+        </div>
+      </div>
 
-            exportToCSV() {
-                const headers = [
-                    'Date', 'Client', 'ShipTo', 'Order#', 'Pallets', 'Carrier',
-                    'Pickup#', 'Scheduled', 'BOL', 'PrintedOPS',
-                    'Complete', 'CompletedDate', 'QualityCheck', 'Comments'
-                ];
-                
-                const csvData = this.state.entries.map(e => [
-                    e.date,
-                    e.client,
-                    e.shipTo || '',
-                    e.order,
-                    e.pallets,
-                    e.carrier,
-                    e.pickupNum,
-                    e.scheduledDate,
-                    e.bolProvided ? 'Yes' : 'No',
-                    e.printedByOps ? 'Yes' : 'No',
-                    e.pickupComplete ? 'Yes' : 'No',
-                    e.completedDate,
-                    e.qualityCheck ? 'Yes' : 'No',
-                    e.comments
-                ]);
+      ${this.state.showAdd ? this.addModal() : ''}
+      ${this.state.editing ? this.editModal() : ''}
+    `;
+  }
 
-                const csv = [headers, ...csvData]
-                    .map(row => row.map(cell => `"${cell}"`).join(','))
-                    .join('\n');
+  statCard(label, value, icon){
+    return `<div class="bg-white p-4 rounded shadow"><div class="flex items-center justify-between">
+      <div><p class="text-gray-500 text-sm">${label}</p><p class="text-2xl font-bold">${value}</p></div>
+      <div class="text-3xl">${icon}</div></div></div>`;
+  }
 
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `pickup_log_${new Date().toISOString().split('T')[0]}.csv`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-            }
+  addModal(){
+    const f = this.state.newForm || this.emptyForm();
+    return `
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold text-indigo-900">Add Pickup</h2>
+          <button class="text-2xl" onclick="app.state.showAdd=false; app.render()">×</button>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.date}" onchange="app.state.newForm.date=this.value"></div>
+          <div><label class="text-sm">Client</label>
+            <select class="w-full border rounded px-3 py-2" onchange="app.state.newForm.client=this.value">
+              <option value="">Select client</option>
+              ${['Pierre Fabre','BR','Promix','Maeleys','Natura','Granado','VBB','Maison','Yves Roche','LMC','Ulta','Bloomingdales','Deliverzen','Nordstrom'].map(c=>`<option ${f.client===c?'selected':''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <div><label class="text-sm">Ship To / Retailer</label><input class="w-full border rounded px-3 py-2" value="${f.shipTo}" onchange="app.state.newForm.shipTo=this.value"></div>
+          <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${f.order}" onchange="app.state.newForm.order=this.value"></div>
+          <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets}" onchange="app.state.newForm.pallets=this.value"></div>
+          <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${f.carrier}" onchange="app.state.newForm.carrier=this.value"></div>
+          <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${f.pickupNum}" onchange="app.state.newForm.pickupNum=this.value"></div>
+          <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate}" onchange="app.state.newForm.scheduledDate=this.value"></div>
+          <div class="col-span-2 grid grid-cols-3 gap-4 mt-2">
+            <label class="flex items-center gap-2"><input type="checkbox" ${f.bolProvided?'checked':''} onchange="app.state.newForm.bolProvided=this.checked"> BOL</label>
+            <label class="flex items-center gap-2"><input type="checkbox" ${f.printedByOps?'checked':''} onchange="app.state.newForm.printedByOps=this.checked"> OPS</label>
+            <label class="flex items-center gap-2"><input type="checkbox" ${f.qualityCheck?'checked':''} onchange="app.state.newForm.qualityCheck=this.checked"> QC</label>
+          </div>
+          <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.newForm.comments=this.value">${f.comments||''}</textarea></div>
+        </div>
+        <div class="flex gap-3 mt-5">
+          <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.add()">Add</button>
+          <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.state.showAdd=false; app.render()">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  }
 
-            formatDate(dateString) {
-                if (!dateString) return '';
-                const date = new Date(dateString);
-                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            }
+  editModal(){
+    const e=this.state.editing;
+    return `
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold text-indigo-900">Edit Pickup</h2>
+          <button class="text-2xl" onclick="app.closeEdit()">×</button>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.date||''}" onchange="app.state.editing.date=this.value"></div>
+          <div><label class="text-sm">Client</label><input class="w-full border rounded px-3 py-2" value="${e.client||''}" onchange="app.state.editing.client=this.value"></div>
+          <div><label class="text-sm">Ship To</label><input class="w-full border rounded px-3 py-2" value="${e.shipTo||''}" onchange="app.state.editing.shipTo=this.value"></div>
+          <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${e.order||''}" onchange="app.state.editing.order=this.value"></div>
+          <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${e.pallets||''}" onchange="app.state.editing.pallets=this.value"></div>
+          <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${e.carrier||''}" onchange="app.state.editing.carrier=this.value"></div>
+          <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${e.pickupNum||''}" onchange="app.state.editing.pickupNum=this.value"></div>
+          <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value"></div>
+          <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
+            <label class="flex items-center gap-2"><input type="checkbox" ${e.bolProvided?'checked':''} onchange="app.state.editing.bolProvided=this.checked"> BOL</label>
+            <label class="flex items-center gap-2"><input type="checkbox" ${e.printedByOps?'checked':''} onchange="app.state.editing.printedByOps=this.checked"> OPS</label>
+            <label class="flex items-center gap-2"><input type="checkbox" ${e.pickupComplete?'checked':''}
+              onchange="(this.checked)?(app.state.editing.pickupComplete=true, app.state.editing.completedDate=new Date().toISOString().split('T')[0]):(app.state.editing.pickupComplete=false, app.state.editing.completedDate='')"> Complete</label>
+            <label class="flex items-center gap-2"><input type="checkbox" ${e.qualityCheck?'checked':''} onchange="app.state.editing.qualityCheck=this.checked"> QC</label>
+          </div>
+          <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.editing.comments=this.value">${e.comments||''}</textarea></div>
+        </div>
+        <div class="flex gap-3 mt-5">
+          <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.saveEdit()">Save</button>
+          <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.closeEdit()">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  }
+}
 
-            render() {
-                const app = document.getElementById('app');
-                
-                if (this.state.showUserModal) {
-                    app.innerHTML = this.renderUserModal();
-                    this.attachUserModalListeners();
-                    return;
-                }
-
-                if (this.state.loading) {
-                    app.innerHTML = this.renderLoading();
-                    return;
-                }
-
-                app.innerHTML = this.renderMainApp();
-                this.attachEventListeners();
-            }
-
-            renderUserModal() {
-                return `
-                    <div class="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-                        <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
-                            <div class="text-center mb-6">
-                                <div class="text-6xl mb-4">👥</div>
-                                <h2 class="text-2xl font-bold text-indigo-900 mb-2">Welcome to Daily Pickup Log</h2>
-                                <p class="text-gray-600">Please enter your name to continue</p>
-                            </div>
-                            <input id="userName" type="text" placeholder="Your name" value="${this.state.userName}"
-                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-4">
-                            <button id="submitUser" class="w-full bg-indigo-600 text-white px-4 py-3 rounded-lg hover:bg-indigo-700 transition">
-                                Continue
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderLoading() {
-                return `
-                    <div class="min-h-screen bg-gray-50 flex items-center justify-center">
-                        <div class="text-center">
-                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-                            <p class="text-gray-600">Loading pickup log...</p>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderMainApp() {
-                const filteredEntries = this.getFilteredEntries();
-                return `
-                    <div class="min-h-screen bg-gray-50 p-6">
-                        ${this.renderHeader()}
-                        ${this.renderStats()}
-                        ${this.renderSearchBar()}
-                        ${this.renderTable(filteredEntries)}
-                        ${this.renderFooter()}
-                        ${this.state.showAddModal ? this.renderAddModal() : ''}
-                        ${this.state.showArchiveModal ? this.renderArchiveModal() : ''}
-                    </div>
-                `;
-            }
-
-            renderHeader() {
-                return `
-                    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <h1 class="text-3xl font-bold text-indigo-900 mb-2">Daily Pick Up Log</h1>
-                                <p class="text-gray-600">Transportation and Customer Service Operations</p>
-                                <p class="text-sm text-gray-500 mt-1">
-                                    Logged in as: <span class="font-semibold text-indigo-600">${this.state.userName}</span>
-                                    <button onclick="app.changeUser()" class="ml-2 text-indigo-600 hover:underline text-xs">(change)</button>
-                                </p>
-                            </div>
-                            <div class="flex gap-3">
-                                <button onclick="app.loadEntries()" class="flex items-center gap-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                                    🔄 Refresh
-                                </button>
-                                <button onclick="app.state.showAddModal = true; app.render()" class="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
-                                    ➕ Add Entry
-                                </button>
-                                <button onclick="app.state.showArchiveModal = true; app.render()" class="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-                                    📁 Archive BOLs
-                                </button>
-                                <button onclick="app.exportToCSV()" class="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
-                                    📥 Export Excel
-                                </button>
-                            </div>
-                        </div>
-                        <div class="mt-4 text-sm text-gray-500">
-                            Powered by Google Sheets • Last updated: ${new Date().toLocaleTimeString()} • Auto-refresh every 30 minutes
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderStats() {
-                const { total, completed, pending, issues } = this.state.stats;
-                return `
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-white p-4 rounded-lg shadow">
-                            <div class="flex items-center justify-between">
-                                <div><p class="text-gray-500 text-sm">Total Pickups</p><p class="text-2xl font-bold text-indigo-900">${total}</p></div>
-                                <div class="text-4xl">📦</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow">
-                            <div class="flex items-center justify-between">
-                                <div><p class="text-gray-500 text-sm">Completed</p><p class="text-2xl font-bold text-green-600">${completed}</p></div>
-                                <div class="text-4xl">✅</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow">
-                            <div class="flex items-center justify-between">
-                                <div><p class="text-gray-500 text-sm">Pending</p><p class="text-2xl font-bold text-orange-600">${pending}</p></div>
-                                <div class="text-4xl">⏳</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow">
-                            <div class="flex items-center justify-between">
-                                <div><p class="text-gray-500 text-sm">Quality Issues</p><p class="text-2xl font-bold text-red-600">${issues}</p></div>
-                                <div class="text-4xl">⚠️</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderSearchBar() {
-                return `
-                    <div class="bg-white rounded-lg shadow-md p-4 mb-6">
-                        <div class="flex gap-4 items-center">
-                            <div class="flex-1 relative">
-                                <span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
-                                <input id="searchInput" type="text" placeholder="Search by client, ship to, order, carrier, or pickup number..." value="${this.state.searchTerm}"
-                                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-gray-500">🔽</span>
-                                <select id="filterSelect" class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                                    <option value="all" ${this.state.filterStatus === 'all' ? 'selected' : ''}>All Entries</option>
-                                    <option value="completed" ${this.state.filterStatus === 'completed' ? 'selected' : ''}>Completed Only</option>
-                                    <option value="pending" ${this.state.filterStatus === 'pending' ? 'selected' : ''}>Pending Only</option>
-                                    <option value="issues" ${this.state.filterStatus === 'issues' ? 'selected' : ''}>Quality Issues</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderTable(entries) {
-                const rows = entries.map(entry => `
-                    <tr class="hover:bg-gray-50 transition">
-                        <td class="px-4 py-3 text-sm">${this.formatDate(entry.date)}</td>
-                        <td class="px-4 py-3 text-sm font-medium">${entry.client}</td>
-                        <td class="px-4 py-3 text-sm">${entry.shipTo || ''}</td>
-                        <td class="px-4 py-3 text-sm">${entry.order}</td>
-                        <td class="px-4 py-3 text-sm text-center">${entry.pallets}</td>
-                        <td class="px-4 py-3 text-sm">${entry.carrier}</td>
-                        <td class="px-4 py-3 text-sm">${entry.pickupNum}</td>
-                        <td class="px-4 py-3 text-sm">${this.formatDate(entry.scheduledDate)}</td>
-                        <td class="px-4 py-3 text-center">
-                            <input type="checkbox" ${entry.bolProvided ? 'checked' : ''} 
-                                   onchange="app.handleUpdateEntry('${entry.id}', 'bolProvided', this.checked)"
-                                   class="w-5 h-5 text-indigo-600 rounded cursor-pointer">
-                        </td>
-                        <td class="px-4 py-3 text-center">
-                            <input type="checkbox" ${entry.printedByOps ? 'checked' : ''} 
-                                   onchange="app.handleUpdateEntry('${entry.id}', 'printedByOps', this.checked)"
-                                   class="w-5 h-5 text-indigo-600 rounded cursor-pointer">
-                        </td>
-                        <td class="px-4 py-3 text-center">
-                            <input type="checkbox" ${entry.pickupComplete ? 'checked' : ''} 
-                                   onchange="app.handleUpdateEntry('${entry.id}', 'pickupComplete', this.checked)"
-                                   class="w-5 h-5 text-indigo-600 rounded cursor-pointer">
-                        </td>
-                        <td class="px-4 py-3 text-sm">${this.formatDate(entry.completedDate)}</td>
-                        <td class="px-4 py-3 text-center">
-                            <input type="checkbox" ${entry.qualityCheck ? 'checked' : ''} 
-                                   onchange="app.handleUpdateEntry('${entry.id}', 'qualityCheck', this.checked)"
-                                   class="w-5 h-5 text-indigo-600 rounded cursor-pointer">
-                        </td>
-                        <td class="px-4 py-3 text-sm max-w-xs truncate">${entry.comments}</td>
-                        <td class="px-4 py-3 text-center">
-                            <button onclick="app.handleDeleteEntry('${entry.id}')" class="text-red-600 hover:text-red-800" title="Delete">🗑️</button>
-                        </td>
-                    </tr>
-                `).join('');
-
-                return `
-                    <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-indigo-900 text-white">
-                                    <tr>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Date</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Client</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Ship To</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Order#</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Pallets</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Carrier</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Pick up #</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Scheduled</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">BOL</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">OPS</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">Complete</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Completed</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">QC</th>
-                                        <th class="px-4 py-3 text-left text-sm font-semibold">Comments</th>
-                                        <th class="px-4 py-3 text-center text-sm font-semibold">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-200">
-                                    ${rows.length > 0 ? rows : '<tr><td colspan="15" class="text-center py-12 text-gray-500">No entries found.</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderAddModal() {
-                return `
-                    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-                            <div class="flex items-center justify-between mb-4">
-                                <h2 class="text-2xl font-bold text-indigo-900">Add New Pickup Entry</h2>
-                                <button onclick="app.state.showAddModal = false; app.render()" class="text-gray-500 hover:text-gray-700 text-2xl">×</button>
-                            </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                                    <input id="formDate" type="date" value="${this.state.formData.date}"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Client</label>
-                                    <select id="formClient"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                        <option value="">Select client</option>
-                                        <option value="Pierre Fabre">Pierre Fabre</option>
-                                        <option value="BR">BR</option>
-                                        <option value="Promix">Promix</option>
-                                        <option value="Maeleys">Maeleys</option>
-                                        <option value="Natura">Natura</option>
-                                        <option value="Granado">Granado</option>
-                                        <option value="VBB">VBB</option>
-                                        <option value="Maison">Maison</option>
-                                        <option value="Yves Roche">Yves Roche</option>
-                                        <option value="LMC">LMC</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Ship To / Retailer</label>
-                                    <input id="formShipTo" type="text" placeholder="Ship To or Retailer"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Order Number</label>
-                                    <input id="formOrder" type="text" placeholder="Order #"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Total Pallets</label>
-                                    <input id="formPallets" type="number" placeholder="Number"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Carrier</label>
-                                    <input id="formCarrier" type="text" placeholder="Carrier name"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Pickup Number</label>
-                                    <input id="formPickupNum" type="text" placeholder="Pickup #"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Scheduled Pickup Date</label>
-                                    <input id="formScheduled" type="date"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
-                                </div>
-                                <div class="col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Comments</label>
-                                    <textarea id="formComments" rows="3" placeholder="Additional notes"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"></textarea>
-                                </div>
-                                <div class="col-span-2 grid grid-cols-2 gap-4">
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input id="formBOL" type="checkbox" class="w-5 h-5 text-indigo-600 rounded">
-                                        <span class="text-sm font-medium text-gray-700">BOL Provided</span>
-                                    </label>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input id="formPrintedOps" type="checkbox" class="w-5 h-5 text-indigo-600 rounded">
-                                        <span class="text-sm font-medium text-gray-700">Printed by OPS</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="flex gap-3 mt-6">
-                                <button onclick="app.submitAddForm()" class="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">Add Entry</button>
-                                <button onclick="app.state.showAddModal = false; app.render()" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition">Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderArchiveModal() {
-                return `
-                    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div class="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full mx-4">
-                            <div class="flex items-center justify-between mb-4">
-                                <h2 class="text-2xl font-bold text-indigo-900">BOL Archive System</h2>
-                                <button onclick="app.state.showArchiveModal = false; app.render()" class="text-gray-500 hover:text-gray-700 text-2xl">×</button>
-                            </div>
-                            <div class="space-y-4">
-                                <div class="bg-indigo-50 p-4 rounded-lg">
-                                    <h3 class="font-semibold text-indigo-900 mb-2">Google Sheets Archive</h3>
-                                    <p class="text-sm text-gray-700">Completed pickups will be moved from the live dashboard (Sheet1) to the "Archive" sheet.</p>
-                                    <ul class="text-sm text-gray-700 list-disc list-inside mt-2">
-                                        <li>Keeps the daily dashboard clean</li>
-                                        <li>Full history stays in Google Sheets</li>
-                                        <li>You can restore pickups from Archive using the Restore column + Tracker menu in Sheets</li>
-                                    </ul>
-                                </div>
-                                <div class="bg-green-50 p-4 rounded-lg">
-                                    <h3 class="font-semibold text-green-900 mb-2">Current Status</h3>
-                                    <p class="text-sm text-gray-700">${this.state.stats.completed} completed pickup(s) ready to archive.</p>
-                                </div>
-                                <div class="flex gap-3">
-                                    <button onclick="app.runArchiveBOLs()" class="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition">
-                                        Archive completed pickups now
-                                    </button>
-                                    <button onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}', '_blank')" class="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition">
-                                        Open Google Sheet
-                                    </button>
-                                    <button onclick="app.state.showArchiveModal = false; app.render()" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition">
-                                        Close
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-
-            renderFooter() {
-                return `
-                    <div class="mt-6 bg-blue-50 border-l-4 border-blue-600 p-4 rounded">
-                        <h3 class="font-semibold text-blue-900 mb-2">📋 Quality Check Requirements</h3>
-                        <p class="text-sm text-blue-800">
-                            Before marking "Pickup Complete," team members must verify packing quality and check the Quality Check box. 
-                            This ensures proper stacking, no damage, and BOL accuracy before shipment leaves the facility.
-                        </p>
-                    </div>
-                    <div class="mt-4 bg-green-50 border-l-4 border-green-600 p-4 rounded">
-                        <h3 class="font-semibold text-green-900 mb-2">💾 Google Sheets Backend</h3>
-                        <p class="text-sm text-green-800">
-                            All data is automatically saved to Google Sheets. Changes from team members appear after refresh (every 2 minutes).
-                            You can access the raw data directly in Google Sheets for advanced reporting and analysis.
-                        </p>
-                    </div>
-                `;
-            }
-
-            attachUserModalListeners() {
-                const input = document.getElementById('userName');
-                const button = document.getElementById('submitUser');
-                
-                if (input) {
-                    input.addEventListener('input', (e) => this.state.userName = e.target.value);
-                    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.submitUserName(); });
-                }
-                if (button) button.addEventListener('click', () => this.submitUserName());
-            }
-
-            attachEventListeners() {
-                const searchInput = document.getElementById('searchInput');
-                if (searchInput) {
-                    searchInput.addEventListener('input', (e) => {
-                        this.state.searchTerm = e.target.value;
-                        this.render();
-                    });
-                }
-
-                const filterSelect = document.getElementById('filterSelect');
-                if (filterSelect) {
-                    filterSelect.addEventListener('change', (e) => {
-                        this.state.filterStatus = e.target.value;
-                        this.render();
-                    });
-                }
-            }
-
-            submitUserName() {
-                if (this.state.userName.trim()) {
-                    localStorage.setItem('pickupLogUser', this.state.userName.trim());
-                    this.state.showUserModal = false;
-                    this.init();
-                }
-            }
-
-            changeUser() {
-                const newUser = prompt('Enter your name:', this.state.userName);
-                if (newUser && newUser.trim()) {
-                    this.state.userName = newUser.trim();
-                    localStorage.setItem('pickupLogUser', newUser.trim());
-                    this.render();
-                }
-            }
-
-            submitAddForm() {
-                this.state.formData = {
-                    date: document.getElementById('formDate').value,
-                    client: document.getElementById('formClient').value,
-                    shipTo: document.getElementById('formShipTo').value, // NEW
-                    order: document.getElementById('formOrder').value,
-                    pallets: document.getElementById('formPallets').value,
-                    carrier: document.getElementById('formCarrier').value,
-                    pickupNum: document.getElementById('formPickupNum').value,
-                    scheduledDate: document.getElementById('formScheduled').value,
-                    bolProvided: document.getElementById('formBOL').checked,
-                    printedByOps: document.getElementById('formPrintedOps').checked,
-                    pickupComplete: false,
-                    completedDate: '',
-                    qualityCheck: false,
-                    comments: document.getElementById('formComments').value
-                };
-                this.handleAddEntry();
-            }
-        }
-
-        // Initialize
-        let app;
-        window.addEventListener('DOMContentLoaded', () => {
-            if (!CONFIG.SCRIPT_URL || CONFIG.SCRIPT_URL === '') {
-                document.getElementById('app').innerHTML = `
-                    <div class="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-                        <div class="bg-yellow-50 border-l-4 border-yellow-600 p-6 rounded-lg max-w-2xl">
-                            <h2 class="text-2xl font-bold text-yellow-900 mb-4">⚙️ Configuration Required</h2>
-                            <p class="text-yellow-800 mb-4">Please update the SCRIPT_URL in the CONFIG section.</p>
-                            <ol class="list-decimal list-inside text-yellow-800 space-y-2">
-                                <li>Open your Google Sheet</li>
-                                <li>Go to Extensions → Apps Script</li>
-                                <li>Deploy as Web App with "Anyone" access</li>
-                                <li>Copy the Web App URL</li>
-                                <li>Update SCRIPT_URL in line 24 of this file</li>
-                            </ol>
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-            app = new PickupLogApp();
-        });
-    </script>
+let app;
+window.addEventListener('DOMContentLoaded',()=>{ app=new PickupLogApp(); });
+</script>
 </body>
 </html>
-
-
-
-
-
