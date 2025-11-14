@@ -17,7 +17,7 @@
   <script>
   // ================== CONFIG ==================
   const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwL6cDPU4BLJDNUOGYK4jYivbd45_4gTovHUixVApsZXRvUZTxol1d5OrqLT776mvDH/exec',
+    SCRIPT_: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
     SHEET_NAME: 'Sheet1'
   };
@@ -32,19 +32,19 @@
       return j.success ? j.data : [];
     }
     async addEntry(entry){
-      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
+      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
       return r.json();
     }
     async updateEntryById(id, entry){
-      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
+      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
       return r.json();
     }
     async deleteEntryById(id){
-      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
+      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
       return r.json();
     }
     async archiveCompleted(){
-      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
+      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
       return r.json();
     }
   }
@@ -135,19 +135,24 @@
     }
 
     async updateField(id, field, value) {
-      const i = this.state.entries.findIndex(e => String(e.id) === String(id));
-      if (i < 0) return;
-      const entry = { ...this.state.entries[i], [field]: value };
-      if (field === 'pickupComplete') {
-        const n = new Date();
-        const y = n.getFullYear();
-        const m = String(n.getMonth() + 1).padStart(2, '0');
-        const d = String(n.getDate()).padStart(2, '0');
-        entry.completedDate = value ? `${y}-${m}-${d}` : '';
-      }
-      await this.db.updateEntryById(id, entry);
-      await this.load();
-    }
+  const i = this.state.entries.findIndex(e => String(e.id) === String(id));
+  if (i < 0) return;
+
+  const entry = { ...this.state.entries[i], [field]: value };
+
+  // Stamp local date when completed
+  if (field === 'pickupComplete') {
+    const n = new Date();
+    const y = n.getFullYear();
+    const m = String(n.getMonth() + 1).padStart(2, '0');
+    const d = String(n.getDate()).padStart(2, '0');
+    entry.completedDate = value ? `${y}-${m}-${d}` : '';
+  }
+
+  await this.db.updateEntryById(id, entry);
+  await this.load();
+}
+
 
     async delete(id){
       if(!confirm('Delete this entry?')) return;
@@ -375,3 +380,4 @@
   </script>
 </body>
 </html>
+
