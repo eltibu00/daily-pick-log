@@ -158,7 +158,7 @@
         await this.load();
         // Get BOL folder URL
         this.state.bolFolderUrl = await this.db.getBOLFolderUrl();
-        setInterval(()=>this.load(), 120000);
+        setInterval(()=>this.load(), 180000);
         await this.db.autoArchiveOld(CONFIG.AUTO_ARCHIVE_DAYS);
       }
       this.render();
@@ -707,6 +707,7 @@
   </script>
 </body>
 </html>
+
 
 
 
