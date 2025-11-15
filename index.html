@@ -17,7 +17,7 @@
   <script>
   // ================== CONFIG ==================
   const CONFIG = {
-    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzmFD_UZJ8MJjnOzQy564jM6Hq9fSR_HzqhRrdARrMppyw4A0x7lnuBL3Z4Mu5-HP0T/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
     SHEET_NAME: 'Sheet1',
     AUTO_ARCHIVE_DAYS: 30
@@ -43,7 +43,8 @@
 
   // Carrier list for dropdown
   const CARRIERS = [
-    'Amazon Freight',
+     'Amazon Freight',
+    'CTII'
     'Dynamic',
     'Estes',
     'FedEx Freight',
@@ -98,6 +99,11 @@
       const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'uploadBOL',id,fileName,fileData,mimeType})});
       return r.json();
     }
+    async getBOLFolderUrl(){
+      const r = await fetch(`${this.url}?action=getBOLFolderUrl`);
+      const j = await r.json();
+      return j.success ? j.url : null;
+    }
   }
 
   // ================== App ==================
@@ -116,7 +122,9 @@
         showArchive: false,
         editing: null,
         newForm: null,
-        uploadingFor: null
+        uploadingFor: null,
+        bolFolderUrl: null,
+        updating: new Set() // Track which rows are being updated
       };
       this.init();
     }
@@ -146,7 +154,9 @@
 
     async init(){
       if (this.state.userName) { 
-        await this.load(); 
+        await this.load();
+        // Get BOL folder URL
+        this.state.bolFolderUrl = await this.db.getBOLFolderUrl();
         setInterval(()=>this.load(), 120000);
         await this.db.autoArchiveOld(CONFIG.AUTO_ARCHIVE_DAYS);
       }
@@ -204,21 +214,38 @@
     }
 
     async updateField(id, field, value) {
-      const i = this.state.entries.findIndex(e => String(e.id) === String(id));
-      if (i < 0) return;
-
-      const entry = { ...this.state.entries[i], [field]: value };
-
-      if (field === 'pickupComplete') {
-        const n = new Date();
-        const y = n.getFullYear();
-        const m = String(n.getMonth() + 1).padStart(2, '0');
-        const d = String(n.getDate()).padStart(2, '0');
-        entry.completedDate = value ? `${y}-${m}-${d}` : '';
+      // Prevent duplicate updates
+      const updateKey = `${id}-${field}`;
+      if (this.state.updating.has(updateKey)) {
+        return;
       }
+      
+      this.state.updating.add(updateKey);
+      
+      try {
+        const i = this.state.entries.findIndex(e => String(e.id) === String(id));
+        if (i < 0) return;
 
-      await this.db.updateEntryById(id, entry);
-      await this.load();
+        const entry = { ...this.state.entries[i], [field]: value };
+
+        if (field === 'pickupComplete') {
+          const n = new Date();
+          const y = n.getFullYear();
+          const m = String(n.getMonth() + 1).padStart(2, '0');
+          const d = String(n.getDate()).padStart(2, '0');
+          entry.completedDate = value ? `${y}-${m}-${d}` : '';
+        }
+
+        // Update local state immediately for better UX
+        this.state.entries[i] = entry;
+        this.render();
+
+        // Then sync to backend
+        await this.db.updateEntryById(id, entry);
+        
+      } finally {
+        this.state.updating.delete(updateKey);
+      }
     }
 
     async delete(id){
@@ -257,19 +284,16 @@
       this.init();
     }
 
-    // BOL Upload Handler
     async handleBOLUpload(id, fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
       
-      // Check file size (5MB max)
       if (file.size > 5 * 1024 * 1024) {
         alert('File too large. Maximum size is 5MB.');
         fileInput.value = '';
         return;
       }
 
-      // Check file type
       const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
       if (!allowedTypes.includes(file.type)) {
         alert('Invalid file type. Please upload PDF, PNG, or JPG files only.');
@@ -277,7 +301,6 @@
         return;
       }
 
-      // Show uploading indicator
       this.state.uploadingFor = id;
       this.render();
 
@@ -323,9 +346,12 @@
           const row = t.closest('tr[data-id]');
           const id = row?.dataset.id;
           const field = t.dataset.field;
-          if (id && field) this.updateField(id, field, t.checked);
+          if (id && field) {
+            // Prevent the checkbox from visually changing until update completes
+            const currentValue = t.checked;
+            this.updateField(id, field, currentValue);
+          }
         }
-        // BOL file upload
         if (t.matches('input[type="file"][data-bol-upload]')) {
           const row = t.closest('tr[data-id]');
           const id = row?.dataset.id;
@@ -341,7 +367,6 @@
       };
     }
 
-    // ================== Render ==================
     render(){
       const el = document.getElementById('app');
 
@@ -374,11 +399,11 @@
           <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
           <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="bolProvided" ${e.bolProvided?'checked':''}></td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="printedByOps" ${e.printedByOps?'checked':''}></td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="pickupComplete" ${e.pickupComplete?'checked':''}></td>
+          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="bolProvided" ${e.bolProvided?'checked':''} ${this.state.updating.has(`${e.id}-bolProvided`)?'disabled':''}></td>
+          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="printedByOps" ${e.printedByOps?'checked':''} ${this.state.updating.has(`${e.id}-printedByOps`)?'disabled':''}></td>
+          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="pickupComplete" ${e.pickupComplete?'checked':''} ${this.state.updating.has(`${e.id}-pickupComplete`)?'disabled':''}></td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="qualityCheck" ${e.qualityCheck?'checked':''}></td>
+          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="qualityCheck" ${e.qualityCheck?'checked':''} ${this.state.updating.has(`${e.id}-qualityCheck`)?'disabled':''}></td>
           <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
           <td class="px-4 py-3 text-xs text-gray-500">${e.createdBy||''}</td>
           <td class="px-4 py-3 text-sm">
@@ -401,6 +426,7 @@
               <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
               <p class="text-gray-600">Transportation & Customer Service Operations</p>
               <p class="text-sm text-gray-500">Logged in as: <span class="text-indigo-600 font-semibold">${this.state.userName}</span></p>
+              ${this.state.bolFolderUrl ? `<p class="text-xs text-gray-500 mt-1">📁 <a href="${this.state.bolFolderUrl}" target="_blank" class="text-blue-600 underline">View BOL Files Folder</a></p>` : ''}
             </div>
             <div class="flex gap-2">
               <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
@@ -680,4 +706,3 @@
   </script>
 </body>
 </html>
-
