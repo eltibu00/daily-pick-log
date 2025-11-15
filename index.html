@@ -19,7 +19,8 @@
   const CONFIG = {
     SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
-    SHEET_NAME: 'Sheet1'
+    SHEET_NAME: 'Sheet1',
+    AUTO_ARCHIVE_DAYS: 30 // Auto-archive pickups completed more than 30 days ago
   };
 
   // ============== Sheets API wrapper ==============
@@ -28,6 +29,11 @@
 
     async getAllEntries(){
       const r = await fetch(`${this.url}?action=getAllEntries`);
+      const j = await r.json();
+      return j.success ? j.data : [];
+    }
+    async getArchivedEntries(){
+      const r = await fetch(`${this.url}?action=getArchivedEntries`);
       const j = await r.json();
       return j.success ? j.data : [];
     }
@@ -47,6 +53,14 @@
       const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
       return r.json();
     }
+    async autoArchiveOld(days){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'autoArchiveOld',days})});
+      return r.json();
+    }
+    async uploadBOL(id, fileName, fileData){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'uploadBOL',id,fileName,fileData})});
+      return r.json();
+    }
   }
 
   // ================== App ==================
@@ -57,12 +71,15 @@
         userName: localStorage.getItem('pickupLogUser') || '',
         showUserModal: !localStorage.getItem('pickupLogUser'),
         entries: [],
+        archivedEntries: [],
         search: '',
         filter: 'all',
         stats: { total: 0, completed: 0, pending: 0, issues: 0 },
         showAdd: false,
+        showArchive: false,
         editing: null,
-        newForm: null
+        newForm: null,
+        uploadingBOL: null
       };
       this.init();
     }
@@ -83,12 +100,19 @@
         pickupComplete: false,
         completedDate: '',
         qualityCheck: false,
-        comments: ''
+        comments: '',
+        createdBy: this.state.userName,
+        bolFile: ''
       };
     }
 
     async init(){
-      if (this.state.userName) { await this.load(); setInterval(()=>this.load(), 120000); }
+      if (this.state.userName) { 
+        await this.load(); 
+        setInterval(()=>this.load(), 120000);
+        // Auto-archive on init
+        await this.db.autoArchiveOld(CONFIG.AUTO_ARCHIVE_DAYS);
+      }
       this.render();
     }
 
@@ -98,6 +122,13 @@
       const completed = data.filter(e=>e.pickupComplete).length;
       const issues = data.filter(e=>e.pickupComplete && !e.qualityCheck).length;
       this.state.stats = { total: data.length, completed, pending: data.length - completed, issues };
+      this.render();
+    }
+
+    async loadArchive(){
+      const data = await this.db.getArchivedEntries();
+      this.state.archivedEntries = data;
+      this.state.showArchive = true;
       this.render();
     }
 
@@ -129,6 +160,7 @@
 
     async add(){
       const fd = this.state.newForm;
+      fd.createdBy = this.state.userName; // Set creator
       await this.db.addEntry(fd);
       this.state.showAdd = false;
       await this.load();
@@ -177,7 +209,7 @@
 
     async archive(){
       const res = await this.db.archiveCompleted();
-      alert(`Archived pickups: ${res.archived||0}`);
+      alert(`Archived ${res.archived||0} completed pickups`);
       await this.load();
     }
 
@@ -187,6 +219,30 @@
       this.state.userName = name;
       this.state.showUserModal = false;
       this.init();
+    }
+
+    // BOL Upload handler
+    async handleBOLUpload(id, fileInput) {
+      const file = fileInput.files[0];
+      if (!file) return;
+      
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File too large. Maximum 5MB.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        const res = await this.db.uploadBOL(id, file.name, base64);
+        if (res.success) {
+          alert('BOL uploaded successfully!');
+          await this.load();
+        } else {
+          alert('Upload failed: ' + (res.error || 'Unknown error'));
+        }
+      };
+      reader.readAsDataURL(file);
     }
 
     bindTableEvents() {
@@ -200,6 +256,12 @@
           const id = row?.dataset.id;
           const field = t.dataset.field;
           if (id && field) this.updateField(id, field, t.checked);
+        }
+        // BOL file upload
+        if (t.matches('input[type="file"][data-bol-upload]')) {
+          const row = t.closest('tr[data-id]');
+          const id = row?.dataset.id;
+          if (id) this.handleBOLUpload(id, t);
         }
       };
 
@@ -229,6 +291,11 @@
         return;
       }
 
+      if(this.state.showArchive){
+        this.renderArchive();
+        return;
+      }
+
       const rows = this.filtered().map(e => `
         <tr class="hover:bg-gray-50" data-id="${e.id}">
           <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
@@ -245,6 +312,11 @@
           <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
           <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="qualityCheck" ${e.qualityCheck?'checked':''}></td>
           <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
+          <td class="px-4 py-3 text-xs text-gray-500">${e.createdBy||''}</td>
+          <td class="px-4 py-3 text-sm">
+            ${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 text-xs">View</a>` : ''}
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" data-bol-upload class="text-xs w-20">
+          </td>
           <td class="px-4 py-3 text-center">
             <button class="text-indigo-600 mr-2" data-edit data-id="${e.id}">✏️</button>
             <button class="text-red-600" data-del data-id="${e.id}">🗑️</button>
@@ -263,7 +335,8 @@
             <div class="flex gap-2">
               <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
               <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.state.showAdd=true; app.state.newForm=app.emptyForm(); app.render()">➕ Add</button>
-              <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive</button>
+              <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive Now</button>
+              <button class="bg-purple-600 text-white px-4 py-2 rounded" onclick="app.loadArchive()">📂 View Archive</button>
               <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Sheet</button>
             </div>
           </div>
@@ -307,10 +380,12 @@
                   <th class="px-4 py-3 text-left">Completed</th>
                   <th class="px-4 py-3 text-center">QC</th>
                   <th class="px-4 py-3 text-left">Comments</th>
+                  <th class="px-4 py-3 text-left">Created By</th>
+                  <th class="px-4 py-3 text-left">BOL File</th>
                   <th class="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="15" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="17" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -318,6 +393,56 @@
         ${this.state.editing ? this.editModal() : ''}
       `;
       this.bindTableEvents();
+    }
+
+    renderArchive(){
+      const el = document.getElementById('app');
+      const rows = this.state.archivedEntries.map(e => `
+        <tr class="hover:bg-gray-50">
+          <td class="px-4 py-3 text-sm">${this.formatDate(e.date)}</td>
+          <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
+          <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
+          <td class="px-4 py-3 text-sm">${e.order||''}</td>
+          <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
+          <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
+          <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
+          <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
+          <td class="px-4 py-3 text-sm">${e.createdBy||''}</td>
+          <td class="px-4 py-3 text-sm">${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600">View</a>` : 'N/A'}</td>
+        </tr>
+      `).join('');
+
+      el.innerHTML = `
+        <div class="p-6">
+          <div class="bg-white rounded-lg shadow p-6 mb-6 flex justify-between items-center">
+            <div>
+              <h1 class="text-3xl font-bold text-indigo-900 mb-1">📂 Archived Pickups</h1>
+              <p class="text-gray-600">Completed pickups (auto-archived after ${CONFIG.AUTO_ARCHIVE_DAYS} days)</p>
+            </div>
+            <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.state.showArchive=false; app.render()">← Back to Active</button>
+          </div>
+
+          <div class="bg-white rounded-lg shadow overflow-x-auto">
+            <table class="w-full">
+              <thead class="bg-gray-700 text-white">
+                <tr>
+                  <th class="px-4 py-3 text-left">Date</th>
+                  <th class="px-4 py-3 text-left">Client</th>
+                  <th class="px-4 py-3 text-left">Ship To</th>
+                  <th class="px-4 py-3 text-left">Order#</th>
+                  <th class="px-4 py-3 text-left">Pallets</th>
+                  <th class="px-4 py-3 text-left">Carrier</th>
+                  <th class="px-4 py-3 text-left">Pickup#</th>
+                  <th class="px-4 py-3 text-left">Completed</th>
+                  <th class="px-4 py-3 text-left">Created By</th>
+                  <th class="px-4 py-3 text-left">BOL</th>
+                </tr>
+              </thead>
+              <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-gray-500">No archived entries</td></tr>`}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
     }
 
     statCard(label, value, icon){
@@ -342,6 +467,7 @@
             <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${f.carrier||''}" onchange="app.state.newForm.carrier=this.value"></div>
             <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${f.pickupNum||''}" onchange="app.state.newForm.pickupNum=this.value"></div>
             <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate||''}" onchange="app.state.newForm.scheduledDate=this.value"></div>
+            <div class="col-span-2"><label class="text-sm block mb-1">Created By: <strong>${this.state.userName}</strong></label></div>
             <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
               <label class="flex items-center gap-2"><input type="checkbox" ${f.bolProvided?'checked':''} onchange="app.state.newForm.bolProvided=this.checked"> BOL</label>
               <label class="flex items-center gap-2"><input type="checkbox" ${f.printedByOps?'checked':''} onchange="app.state.newForm.printedByOps=this.checked"> OPS</label>
@@ -376,6 +502,7 @@
             <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${e.carrier||''}" onchange="app.state.editing.carrier=this.value"></div>
             <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${e.pickupNum||''}" onchange="app.state.editing.pickupNum=this.value"></div>
             <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value"></div>
+            <div class="col-span-2"><label class="text-sm text-gray-600">Created by: <strong>${e.createdBy||'Unknown'}</strong></label></div>
             <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
               <label class="flex items-center gap-2"><input type="checkbox" ${e.bolProvided?'checked':''} onchange="app.state.editing.bolProvided=this.checked"> BOL</label>
               <label class="flex items-center gap-2"><input type="checkbox" ${e.printedByOps?'checked':''} onchange="app.state.editing.printedByOps=this.checked"> OPS</label>
