@@ -17,7 +17,7 @@
   <script>
   // ================== CONFIG ==================
   const CONFIG = {
-    SCRIPT_: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec',
+    SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbxYJz1mwNd0FjFbRGBjODsbkvPpUMpSwFKvmhZydF4N_TUaF4wNgQz2wv0W6Gy263mi/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
     SHEET_NAME: 'Sheet1'
   };
@@ -32,19 +32,19 @@
       return j.success ? j.data : [];
     }
     async addEntry(entry){
-      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'addEntry',entry})});
       return r.json();
     }
     async updateEntryById(id, entry){
-      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'updateEntryById',id,entry})});
       return r.json();
     }
     async deleteEntryById(id){
-      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'deleteEntryById',id})});
       return r.json();
     }
     async archiveCompleted(){
-      const r = await fetch(this.,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'archiveCompleted'})});
       return r.json();
     }
   }
@@ -135,24 +135,23 @@
     }
 
     async updateField(id, field, value) {
-  const i = this.state.entries.findIndex(e => String(e.id) === String(id));
-  if (i < 0) return;
+      const i = this.state.entries.findIndex(e => String(e.id) === String(id));
+      if (i < 0) return;
 
-  const entry = { ...this.state.entries[i], [field]: value };
+      const entry = { ...this.state.entries[i], [field]: value };
 
-  // Stamp local date when completed
-  if (field === 'pickupComplete') {
-    const n = new Date();
-    const y = n.getFullYear();
-    const m = String(n.getMonth() + 1).padStart(2, '0');
-    const d = String(n.getDate()).padStart(2, '0');
-    entry.completedDate = value ? `${y}-${m}-${d}` : '';
-  }
+      // Stamp local date when completed
+      if (field === 'pickupComplete') {
+        const n = new Date();
+        const y = n.getFullYear();
+        const m = String(n.getMonth() + 1).padStart(2, '0');
+        const d = String(n.getDate()).padStart(2, '0');
+        entry.completedDate = value ? `${y}-${m}-${d}` : '';
+      }
 
-  await this.db.updateEntryById(id, entry);
-  await this.load();
-}
-
+      await this.db.updateEntryById(id, entry);
+      await this.load();
+    }
 
     async delete(id){
       if(!confirm('Delete this entry?')) return;
@@ -263,7 +262,7 @@
             </div>
             <div class="flex gap-2">
               <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
-              <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.showAdd=true; app.newForm=app.emptyForm(); app.render()">➕ Add</button>
+              <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.state.showAdd=true; app.state.newForm=app.emptyForm(); app.render()">➕ Add</button>
               <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive</button>
               <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Sheet</button>
             </div>
@@ -325,6 +324,40 @@
       return `<div class="bg-white p-4 rounded shadow"><div class="flex justify-between"><div><p class="text-gray-500 text-sm">${label}</p><p class="text-2xl font-bold">${value}</p></div><div class="text-3xl">${icon}</div></div></div>`;
     }
 
+    addModal(){
+      const f = this.state.newForm;
+      return `
+      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold text-indigo-900">Add Pickup</h2>
+            <button class="text-2xl" onclick="app.state.showAdd=false; app.render()">×</button>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-sm">Date</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.date||''}" onchange="app.state.newForm.date=this.value"></div>
+            <div><label class="text-sm">Client</label><input class="w-full border rounded px-3 py-2" value="${f.client||''}" onchange="app.state.newForm.client=this.value"></div>
+            <div><label class="text-sm">Ship To</label><input class="w-full border rounded px-3 py-2" value="${f.shipTo||''}" onchange="app.state.newForm.shipTo=this.value"></div>
+            <div><label class="text-sm">Order#</label><input class="w-full border rounded px-3 py-2" value="${f.order||''}" onchange="app.state.newForm.order=this.value"></div>
+            <div><label class="text-sm">Pallets</label><input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets||''}" onchange="app.state.newForm.pallets=this.value"></div>
+            <div><label class="text-sm">Carrier</label><input class="w-full border rounded px-3 py-2" value="${f.carrier||''}" onchange="app.state.newForm.carrier=this.value"></div>
+            <div><label class="text-sm">Pickup#</label><input class="w-full border rounded px-3 py-2" value="${f.pickupNum||''}" onchange="app.state.newForm.pickupNum=this.value"></div>
+            <div><label class="text-sm">Scheduled</label><input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate||''}" onchange="app.state.newForm.scheduledDate=this.value"></div>
+            <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.bolProvided?'checked':''} onchange="app.state.newForm.bolProvided=this.checked"> BOL</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.printedByOps?'checked':''} onchange="app.state.newForm.printedByOps=this.checked"> OPS</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.pickupComplete?'checked':''} onchange="app.state.newForm.pickupComplete=this.checked"> Complete</label>
+              <label class="flex items-center gap-2"><input type="checkbox" ${f.qualityCheck?'checked':''} onchange="app.state.newForm.qualityCheck=this.checked"> QC</label>
+            </div>
+            <div class="col-span-2"><label class="text-sm">Comments</label><textarea rows="3" class="w-full border rounded px-3 py-2" onchange="app.state.newForm.comments=this.value">${f.comments||''}</textarea></div>
+          </div>
+          <div class="flex gap-3 mt-5">
+            <button class="flex-1 bg-indigo-600 text-white rounded px-4 py-2" onclick="app.add()">Add</button>
+            <button class="flex-1 bg-gray-300 rounded px-4 py-2" onclick="app.state.showAdd=false; app.render()">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
     editModal(){
       const e = this.state.editing;
       return `
@@ -380,4 +413,3 @@
   </script>
 </body>
 </html>
-
