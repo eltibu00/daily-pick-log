@@ -43,15 +43,21 @@
 
   // Carrier list for dropdown
   const CARRIERS = [
+    'Amazon Freight',
+    'Dynamic',
     'Estes',
+    'FedEx Freight',
+    'Gilbert',
+    'Hercules',
     'JP Express',
-    'ROUTER',
-    'FedEx',
-    'UPS',
+    'Pitt Ohio',
+    'R&L',
+    'SaIa',
+    'TForce',
+    'WWE',
     'XPO',
-    'Old Dominion',
     'YRC',
-    'Other'
+    'Other(note in comments)'
   ];
 
   // ============== Sheets API wrapper ==============
@@ -88,6 +94,10 @@
       const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'autoArchiveOld',days})});
       return r.json();
     }
+    async uploadBOL(id, fileName, fileData, mimeType){
+      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'uploadBOL',id,fileName,fileData,mimeType})});
+      return r.json();
+    }
   }
 
   // ================== App ==================
@@ -105,7 +115,8 @@
         showAdd: false,
         showArchive: false,
         editing: null,
-        newForm: null
+        newForm: null,
+        uploadingFor: null
       };
       this.init();
     }
@@ -128,7 +139,8 @@
         qualityCheck: false,
         comments: '',
         createdBy: this.state.userName,
-        bolFile: ''
+        bolFile: '',
+        bolFileName: ''
       };
     }
 
@@ -245,6 +257,62 @@
       this.init();
     }
 
+    // BOL Upload Handler
+    async handleBOLUpload(id, fileInput) {
+      const file = fileInput.files[0];
+      if (!file) return;
+      
+      // Check file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File too large. Maximum size is 5MB.');
+        fileInput.value = '';
+        return;
+      }
+
+      // Check file type
+      const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+      if (!allowedTypes.includes(file.type)) {
+        alert('Invalid file type. Please upload PDF, PNG, or JPG files only.');
+        fileInput.value = '';
+        return;
+      }
+
+      // Show uploading indicator
+      this.state.uploadingFor = id;
+      this.render();
+
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const base64 = e.target.result.split(',')[1];
+          const res = await this.db.uploadBOL(id, file.name, base64, file.type);
+          
+          if (res.success) {
+            alert('BOL uploaded successfully!');
+            await this.load();
+          } else {
+            alert('Upload failed: ' + (res.error || 'Unknown error'));
+          }
+          
+          this.state.uploadingFor = null;
+          fileInput.value = '';
+          this.render();
+        };
+        reader.onerror = () => {
+          alert('Error reading file');
+          this.state.uploadingFor = null;
+          fileInput.value = '';
+          this.render();
+        };
+        reader.readAsDataURL(file);
+      } catch (error) {
+        alert('Upload error: ' + error.message);
+        this.state.uploadingFor = null;
+        fileInput.value = '';
+        this.render();
+      }
+    }
+
     bindTableEvents() {
       const table = document.querySelector('tbody');
       if (!table) return;
@@ -257,17 +325,11 @@
           const field = t.dataset.field;
           if (id && field) this.updateField(id, field, t.checked);
         }
-        // BOL Link input
-        if (t.matches('input[data-bol-link]')) {
+        // BOL file upload
+        if (t.matches('input[type="file"][data-bol-upload]')) {
           const row = t.closest('tr[data-id]');
           const id = row?.dataset.id;
-          if (id) {
-            const i = this.state.entries.findIndex(e => String(e.id) === String(id));
-            if (i >= 0) {
-              const entry = { ...this.state.entries[i], bolFile: t.value };
-              this.db.updateEntryById(id, entry);
-            }
-          }
+          if (id) this.handleBOLUpload(id, t);
         }
       };
 
@@ -320,7 +382,10 @@
           <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
           <td class="px-4 py-3 text-xs text-gray-500">${e.createdBy||''}</td>
           <td class="px-4 py-3 text-sm">
-            ${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 text-xs underline">View BOL</a>` : '<span class="text-gray-400 text-xs">No BOL</span>'}
+            <div class="flex flex-col gap-1">
+              ${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 text-xs underline hover:text-blue-800">${e.bolFileName || 'View BOL'}</a>` : '<span class="text-gray-400 text-xs">No BOL</span>'}
+              ${this.state.uploadingFor === e.id ? '<span class="text-xs text-orange-600">Uploading...</span>' : `<input type="file" accept=".pdf,.png,.jpg,.jpeg" data-bol-upload class="text-xs mt-1" style="font-size:10px;">`}
+            </div>
           </td>
           <td class="px-4 py-3 text-center">
             <button class="text-indigo-600 mr-2" data-edit data-id="${e.id}">✏️</button>
@@ -386,7 +451,7 @@
                   <th class="px-4 py-3 text-center">QC</th>
                   <th class="px-4 py-3 text-left">Comments</th>
                   <th class="px-4 py-3 text-left">Created By</th>
-                  <th class="px-4 py-3 text-left">BOL Link</th>
+                  <th class="px-4 py-3 text-left">BOL File</th>
                   <th class="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
@@ -413,7 +478,7 @@
           <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
           <td class="px-4 py-3 text-sm">${e.createdBy||''}</td>
-          <td class="px-4 py-3 text-sm">${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 underline">View</a>` : 'N/A'}</td>
+          <td class="px-4 py-3 text-sm">${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 underline">${e.bolFileName || 'View'}</a>` : 'N/A'}</td>
         </tr>
       `).join('');
 
@@ -503,10 +568,6 @@
               <input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate||''}" onchange="app.state.newForm.scheduledDate=this.value">
             </div>
             <div class="col-span-2">
-              <label class="text-sm block mb-1">BOL Link (Google Drive, Dropbox, etc.)</label>
-              <input type="url" class="w-full border rounded px-3 py-2" placeholder="https://drive.google.com/..." value="${f.bolFile||''}" onchange="app.state.newForm.bolFile=this.value">
-            </div>
-            <div class="col-span-2">
               <label class="text-sm block mb-1">Created By: <strong>${this.state.userName}</strong></label>
             </div>
             <div class="col-span-2 grid grid-cols-4 gap-4 mt-2">
@@ -575,10 +636,6 @@
             <div>
               <label class="text-sm block mb-1">Scheduled</label>
               <input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value">
-            </div>
-            <div class="col-span-2">
-              <label class="text-sm block mb-1">BOL Link</label>
-              <input type="url" class="w-full border rounded px-3 py-2" placeholder="https://drive.google.com/..." value="${e.bolFile||''}" onchange="app.state.editing.bolFile=this.value">
             </div>
             <div class="col-span-2">
               <label class="text-sm text-gray-600">Created by: <strong>${e.createdBy||'Unknown'}</strong></label>
