@@ -753,9 +753,20 @@
                 </div>
 
                 <div class="card">
-                    <h2>📋 My Tickets</h2>
-                    <div id="myTicketsContainer">
+                    <h2>📋 My Active Tickets</h2>
+                    <div id="activeTicketsContainer">
                         <div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleResolvedSection()">
+                        <h2 class="no-border" style="margin: 0;">✅ Resolved Tickets <span id="resolvedCount" style="font-size: 0.7em; color: #666;">(0)</span></h2>
+                        <span id="resolvedToggle" style="font-size: 1.5em; color: #667eea;">▼</span>
+                    </div>
+                    <div id="resolvedTicketsContainer" class="hidden" style="margin-top: 20px;">
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Showing tickets resolved in the last 7 days</p>
+                        <div id="resolvedTicketsList"></div>
                     </div>
                 </div>
             </div>
@@ -1146,8 +1157,11 @@
         }
 
         async function loadMyTickets() {
-            const container = document.getElementById('myTicketsContainer');
-            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>';
+            const activeContainer = document.getElementById('activeTicketsContainer');
+            const resolvedList = document.getElementById('resolvedTicketsList');
+            const resolvedCount = document.getElementById('resolvedCount');
+
+            activeContainer.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>';
 
             try {
                 // GS uses 'requestorEmail' parameter
@@ -1160,29 +1174,60 @@
                 console.log('activeTickets:', data.activeTickets?.length || 0, data.activeTickets);
                 console.log('resolvedTickets:', data.resolvedTickets?.length || 0, data.resolvedTickets);
 
-                // GS returns {activeTickets: [], resolvedTickets: []}
-                const allTickets = [...(data.activeTickets || []), ...(data.resolvedTickets || [])];
+                const activeTickets = data.activeTickets || [];
+                const resolvedTickets = data.resolvedTickets || [];
 
-                // Debug: Log ticket fields to check client
-                if (allTickets.length > 0) {
-                    console.log('Sample ticket fields:', Object.keys(allTickets[0]));
-                    console.log('First ticket client value:', allTickets[0].client);
+                // Filter resolved tickets to only show last 7 days
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+                const recentResolved = resolvedTickets.filter(ticket => {
+                    const closedDate = ticket.closedAt ? new Date(ticket.closedAt) : new Date(ticket.createdAt);
+                    return closedDate >= sevenDaysAgo;
+                });
+
+                // Render active tickets
+                if (activeTickets.length > 0) {
+                    activeContainer.innerHTML = activeTickets.map(ticket => createRequestorTicketCard(ticket)).join('');
+                } else {
+                    activeContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">✨</div>
+                            <h3>No Active Tickets</h3>
+                            <p>All your requests have been completed! Submit a new request above if needed.</p>
+                        </div>
+                    `;
                 }
 
-                if (allTickets.length > 0) {
-                    container.innerHTML = allTickets.map(ticket => createRequestorTicketCard(ticket)).join('');
+                // Render resolved tickets
+                resolvedCount.textContent = `(${recentResolved.length})`;
+                if (recentResolved.length > 0) {
+                    resolvedList.innerHTML = recentResolved.map(ticket => createRequestorTicketCard(ticket)).join('');
                 } else {
-                    container.innerHTML = `
-                        <div class="empty-state">
+                    resolvedList.innerHTML = `
+                        <div class="empty-state" style="padding: 30px;">
                             <div class="empty-state-icon">📭</div>
-                            <h3>No Tickets Yet</h3>
-                            <p>Submit your first request using the form above!</p>
+                            <h3>No Recent Resolved Tickets</h3>
+                            <p>Resolved tickets older than 7 days are automatically hidden.</p>
                         </div>
                     `;
                 }
             } catch (error) {
                 console.error('Error loading tickets:', error);
-                container.innerHTML = '<div style="color: #c62828; padding: 20px;">Error loading tickets. Please refresh the page.</div>';
+                activeContainer.innerHTML = '<div style="color: #c62828; padding: 20px;">Error loading tickets. Please refresh the page.</div>';
+            }
+        }
+
+        function toggleResolvedSection() {
+            const container = document.getElementById('resolvedTicketsContainer');
+            const toggle = document.getElementById('resolvedToggle');
+
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                toggle.textContent = '▲';
+            } else {
+                container.classList.add('hidden');
+                toggle.textContent = '▼';
             }
         }
 
