@@ -765,7 +765,7 @@
                         <span id="resolvedToggle" style="font-size: 1.5em; color: #667eea;">▼</span>
                     </div>
                     <div id="resolvedTicketsContainer" class="hidden" style="margin-top: 20px;">
-                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Showing tickets resolved in the last 7 days</p>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Showing tickets resolved in the last 3 days</p>
                         <div id="resolvedTicketsList"></div>
                     </div>
                 </div>
@@ -1177,13 +1177,13 @@
                 const activeTickets = data.activeTickets || [];
                 const resolvedTickets = data.resolvedTickets || [];
 
-                // Filter resolved tickets to only show last 7 days
-                const sevenDaysAgo = new Date();
-                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                // Filter resolved tickets to only show last 3 days
+                const threeDaysAgo = new Date();
+                threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
                 const recentResolved = resolvedTickets.filter(ticket => {
                     const closedDate = ticket.closedAt ? new Date(ticket.closedAt) : new Date(ticket.createdAt);
-                    return closedDate >= sevenDaysAgo;
+                    return closedDate >= threeDaysAgo;
                 });
 
                 // Render active tickets
@@ -1208,7 +1208,7 @@
                         <div class="empty-state" style="padding: 30px;">
                             <div class="empty-state-icon">📭</div>
                             <h3>No Recent Resolved Tickets</h3>
-                            <p>Resolved tickets older than 7 days are automatically hidden.</p>
+                            <p>Resolved tickets older than 3 days are automatically hidden.</p>
                         </div>
                     `;
                 }
