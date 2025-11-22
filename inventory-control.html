@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Control Ticket System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .role-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .role-requestor { background: #e3f2fd; color: #1565c0; }
+        .role-clerk { background: #f3e5f5; color: #7b1fa2; }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .card h2.no-border {
+            border: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-weight: 400;
+        }
+
+        .radio-group input[type="radio"] {
+            width: auto;
+            cursor: pointer;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-success { background: #4caf50; color: white; }
+        .btn-success:hover { background: #43a047; }
+
+        .btn-warning { background: #ff9800; color: white; }
+        .btn-warning:hover { background: #f57c00; }
+
+        .btn-info { background: #2196f3; color: white; }
+        .btn-info:hover { background: #1976d2; }
+
+        .btn-purple { background: #9c27b0; color: white; }
+        .btn-purple:hover { background: #7b1fa2; }
+
+        .btn-danger { background: #f44336; color: white; }
+        .btn-danger:hover { background: #d32f2f; }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Tab Navigation */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            background: rgba(102, 126, 234, 0.1);
+            padding: 8px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #667eea;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab:hover {
+            background: rgba(255,255,255,0.5);
+        }
+
+        .tab.active {
+            background: white;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .tab-count {
+            background: rgba(102, 126, 234, 0.2);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+        }
+
+        .tab.active .tab-count {
+            background: #667eea;
+            color: white;
+        }
+
+        .urgent-indicator {
+            color: #f44336;
+            animation: pulse 2s infinite;
+        }
+
+        /* Metrics Bar */
+        .metrics-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: 700;
+        }
+
+        .metric-target {
+            font-size: 0.75em;
+            color: #999;
+        }
+
+        .metric-good { color: #4caf50; }
+        .metric-warning { color: #ff9800; }
+        .metric-bad { color: #f44336; }
+
+        /* Ticket Cards */
+        .ticket-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+
+        .ticket-card:hover {
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .ticket-card.urgent {
+            border-left: 4px solid #f44336;
+        }
+
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .ticket-id {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-new { background: #ffebee; color: #c62828; }
+        .badge-acknowledged { background: #fff9c4; color: #f57f17; }
+        .badge-assigned { background: #ffe0b2; color: #e65100; }
+        .badge-inprogress { background: #e3f2fd; color: #1565c0; }
+        .badge-complete { background: #f3e5f5; color: #6a1b9a; }
+        .badge-resolved { background: #e8f5e9; color: #2e7d32; }
+        .badge-closed { background: #e8f5e9; color: #2e7d32; }
+
+        .badge-urgent {
+            background: #ff1744;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .ticket-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .ticket-description {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .ticket-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding-top: 15px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .driver-select {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        /* Timeline */
+        .timeline {
+            border-left: 3px solid #667eea;
+            padding-left: 20px;
+            margin-top: 20px;
+        }
+
+        .timeline-item {
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+
+        .timeline-item.completed::before {
+            background: #4caf50;
+        }
+
+        .timeline-label {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .timeline-value {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        /* Manager Dashboard */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-card.green { background: linear-gradient(135deg, #43a047 0%, #2e7d32 100%); }
+        .stat-card.red { background: linear-gradient(135deg, #e53935 0%, #c62828 100%); }
+        .stat-card.blue { background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%); }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: 700;
+        }
+
+        .stat-label {
+            font-size: 0.95em;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .breakdown-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .breakdown-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        .breakdown-card h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .breakdown-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .breakdown-row:last-child {
+            border-bottom: none;
+        }
+
+        .progress-bar {
+            width: 100px;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+        }
+
+        /* Table */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .data-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .data-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        /* Utilities */
+        .hidden {
+            display: none !important;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .text-center { text-align: center; }
+        .mb-20 { margin-bottom: 20px; }
+        .mt-20 { margin-top: 20px; }
+
+        /* View Switcher */
+        .view-switcher {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .view-btn {
+            padding: 10px 20px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .view-btn.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .view-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .view-btn.active:hover {
+            background: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+
+            .ticket-info {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Login Section -->
+        <div id="loginSection">
+            <div class="header">
+                <h1>🎫 Inventory Control Ticket System</h1>
+                <p>Submit and track inventory control requests</p>
+            </div>
+
+            <div class="card">
+                <h2>Login</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="loginName">Your Name *</label>
+                        <input type="text" id="loginName" placeholder="Enter your full name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginEmail">Email *</label>
+                        <input type="email" id="loginEmail" placeholder="your.name@staciamericas.com" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Login As:</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="loginRole" value="requestor" checked>
+                            📝 Requestor (Submit Tickets)
+                        </label>
+                        <label>
+                            <input type="radio" name="loginRole" value="clerk">
+                            🎫 Clerk (Process Tickets)
+                        </label>
+                    </div>
+                </div>
+
+                <div id="clerkPasswordGroup" class="form-group hidden">
+                    <label for="clerkPassword">Clerk Password *</label>
+                    <input type="password" id="clerkPassword" placeholder="Enter clerk password">
+                </div>
+
+                <button class="btn btn-primary" onclick="handleLogin()">Login</button>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div id="dashboardSection" class="hidden">
+            <!-- Header -->
+            <div class="header">
+                <div class="header-actions">
+                    <div>
+                        <h1>🎫 Inventory Control Ticket System</h1>
+                        <div class="user-info">
+                            <span>Welcome, <strong id="userName"></strong></span>
+                            <span id="userEmail" style="color: #666;"></span>
+                            <span id="roleBadge" class="role-badge"></span>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button id="managerViewBtn" class="btn btn-secondary hidden" onclick="showManagerView()">📊 Manager View</button>
+                        <button id="reportViewBtn" class="btn btn-secondary hidden" onclick="showReportView()">📈 Reports</button>
+                        <button class="btn btn-secondary" onclick="refreshData()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="handleLogout()">Logout</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Requestor View -->
+            <div id="requestorView">
+                <div class="card">
+                    <h2>📝 Submit New Request</h2>
+                    <form id="newTicketForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="client">Client *</label>
+                                <select id="client" required>
+                                    <option value="">Select client...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="department">Department *</label>
+                                <select id="department" required>
+                                    <option value="">Select department...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Request Type *</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="requestType" value="Replenishment" required> 📦 Replenishment</label>
+                                <label><input type="radio" name="requestType" value="Cycle Count" required> 📊 Cycle Count</label>
+                                <label><input type="radio" name="requestType" value="Supplies Needed" required> 🔧 Supplies Needed</label>
+                                <label><input type="radio" name="requestType" value="Other" required> ❓ Other</label>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="location">Location/Item *</label>
+                                <input type="text" id="location" placeholder="Aisle 5B, Bin 23" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="quantity">Quantity</label>
+                                <input type="text" id="quantity" placeholder="50 units">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Priority *</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="priority" value="Normal" checked required> Normal</label>
+                                <label><input type="radio" name="priority" value="Urgent" required> 🔴 Urgent</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="description">Description *</label>
+                            <textarea id="description" placeholder="Provide details about your request..." required></textarea>
+                        </div>
+
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('newTicketForm').reset()">Clear</button>
+                            <button type="submit" class="btn btn-primary">🎫 Submit Request</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h2>📋 My Tickets</h2>
+                    <div id="myTicketsContainer">
+                        <div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clerk View -->
+            <div id="clerkView" class="hidden">
+                <!-- Efficiency Metrics -->
+                <div class="card">
+                    <h2 class="no-border" style="margin-bottom: 15px;">⏱️ Your Efficiency Metrics</h2>
+                    <div class="metrics-bar" id="metricsBar">
+                        <div class="metric-card">
+                            <div class="metric-label">Time to Acknowledge</div>
+                            <div class="metric-value" id="metricAck">--</div>
+                            <div class="metric-target">Target: &lt;5 min</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Time to Assign</div>
+                            <div class="metric-value" id="metricAssign">--</div>
+                            <div class="metric-target">Target: &lt;10 min</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Time to In Progress</div>
+                            <div class="metric-value" id="metricProgress">--</div>
+                            <div class="metric-target">Target: &lt;15 min</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">Total Processing</div>
+                            <div class="metric-value" id="metricTotal">--</div>
+                            <div class="metric-target">Target: &lt;30 min</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="tabs" id="queueTabs">
+                    <button class="tab active" data-tab="all" onclick="switchTab('all')">
+                        🔥 All <span class="tab-count" id="countAll">0</span>
+                        <span class="urgent-indicator hidden" id="urgentAll">⚠️</span>
+                    </button>
+                    <button class="tab" data-tab="replenishment" onclick="switchTab('replenishment')">
+                        📦 Replenishment <span class="tab-count" id="countReplenishment">0</span>
+                        <span class="urgent-indicator hidden" id="urgentReplenishment">⚠️</span>
+                    </button>
+                    <button class="tab" data-tab="cyclecount" onclick="switchTab('cyclecount')">
+                        📊 Cycle Count <span class="tab-count" id="countCyclecount">0</span>
+                        <span class="urgent-indicator hidden" id="urgentCyclecount">⚠️</span>
+                    </button>
+                    <button class="tab" data-tab="supplies" onclick="switchTab('supplies')">
+                        🔧 Supplies <span class="tab-count" id="countSupplies">0</span>
+                        <span class="urgent-indicator hidden" id="urgentSupplies">⚠️</span>
+                    </button>
+                    <button class="tab" data-tab="other" onclick="switchTab('other')">
+                        ❓ Other <span class="tab-count" id="countOther">0</span>
+                        <span class="urgent-indicator hidden" id="urgentOther">⚠️</span>
+                    </button>
+                </div>
+
+                <!-- Ticket Queue -->
+                <div class="card">
+                    <div id="ticketQueueContainer">
+                        <div class="loading"><div class="spinner"></div><p>Loading ticket queue...</p></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manager View -->
+            <div id="managerView" class="hidden">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 class="no-border">📊 Manager Dashboard</h2>
+                        <button class="btn btn-secondary" onclick="hideManagerView()">← Back to Queue</button>
+                    </div>
+
+                    <!-- Overview Stats -->
+                    <div class="stats-grid" id="managerStats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="statActive">0</div>
+                            <div class="stat-label">Active Tickets</div>
+                        </div>
+                        <div class="stat-card green">
+                            <div class="stat-value" id="statResolved">0</div>
+                            <div class="stat-label">Resolved Today</div>
+                        </div>
+                        <div class="stat-card red">
+                            <div class="stat-value" id="statUrgent">0</div>
+                            <div class="stat-label">Urgent Pending</div>
+                        </div>
+                        <div class="stat-card blue">
+                            <div class="stat-value" id="statAvgTime">--</div>
+                            <div class="stat-label">Avg Resolution Time</div>
+                        </div>
+                    </div>
+
+                    <!-- Breakdowns -->
+                    <div class="breakdown-section">
+                        <div class="breakdown-card">
+                            <h3>📦 By Request Type</h3>
+                            <div id="breakdownType"></div>
+                        </div>
+                        <div class="breakdown-card">
+                            <h3>🏢 By Client</h3>
+                            <div id="breakdownClient"></div>
+                        </div>
+                        <div class="breakdown-card">
+                            <h3>🏬 By Department</h3>
+                            <div id="breakdownDepartment"></div>
+                        </div>
+                    </div>
+
+                    <!-- Clerk Performance -->
+                    <h3 style="margin-bottom: 15px;">👥 Clerk Performance</h3>
+                    <div style="overflow-x: auto;">
+                        <table class="data-table" id="clerkPerformanceTable">
+                            <thead>
+                                <tr>
+                                    <th>Clerk</th>
+                                    <th>Tickets Handled</th>
+                                    <th>Avg Acknowledge</th>
+                                    <th>Avg Assign</th>
+                                    <th>Avg Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clerkPerformanceBody"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Board Overview -->
+                    <h3 style="margin: 30px 0 15px;">📋 Board Overview</h3>
+                    <div class="stats-grid" id="boardOverview"></div>
+                </div>
+            </div>
+
+            <!-- Report View -->
+            <div id="reportView" class="hidden">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 class="no-border">📈 Client Time Analysis Report</h2>
+                        <button class="btn btn-secondary" onclick="hideReportView()">← Back to Queue</button>
+                    </div>
+
+                    <div class="form-row" style="margin-bottom: 20px;">
+                        <div class="form-group">
+                            <label>Client</label>
+                            <select id="reportClient">
+                                <option value="">Select client...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="reportStartDate">
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" id="reportEndDate">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn btn-primary" onclick="generateReport()">Generate Report</button>
+                        </div>
+                    </div>
+
+                    <div id="reportResults">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <h3>Select parameters to generate report</h3>
+                            <p>Choose a client and date range above</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============ CONFIGURATION ============
+        const CONFIG = {
+            APPS_SCRIPT_URL: 'YOUR_APPS_SCRIPT_URL_HERE',
+            REFRESH_INTERVAL: 30000,
+            user: { name: '', email: '', role: '' }
+        };
+
+        let allTickets = [];
+        let drivers = [];
+        let currentTab = 'all';
+
+        // ============ INITIALIZATION ============
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check saved session
+            const savedUser = localStorage.getItem('ticketSystemUser');
+            if (savedUser) {
+                CONFIG.user = JSON.parse(savedUser);
+                showDashboard();
+            }
+
+            // Role toggle
+            document.querySelectorAll('input[name="loginRole"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    document.getElementById('clerkPasswordGroup').classList.toggle('hidden', this.value !== 'clerk');
+                });
+            });
+
+            // Form submit
+            document.getElementById('newTicketForm').addEventListener('submit', handleSubmitTicket);
+
+            // Set default dates for report
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+            document.getElementById('reportEndDate').value = today.toISOString().split('T')[0];
+            document.getElementById('reportStartDate').value = thirtyDaysAgo.toISOString().split('T')[0];
+        });
+
+        // ============ AUTHENTICATION ============
+        async function handleLogin() {
+            const name = document.getElementById('loginName').value.trim();
+            const email = document.getElementById('loginEmail').value.trim();
+            const role = document.querySelector('input[name="loginRole"]:checked').value;
+
+            if (!name || !email) {
+                alert('Please enter your name and email');
+                return;
+            }
+
+            if (!email.toLowerCase().endsWith('@staciamericas.com')) {
+                alert('❌ Invalid Email\n\nOnly @staciamericas.com emails are allowed.');
+                return;
+            }
+
+            // Verify clerk password if clerk role
+            if (role === 'clerk') {
+                const password = document.getElementById('clerkPassword').value;
+                if (!password) {
+                    alert('Please enter the clerk password');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=verifyClerkPassword&password=${encodeURIComponent(password)}`);
+                    const result = await response.json();
+
+                    if (!result.success) {
+                        alert('❌ Invalid clerk password');
+                        return;
+                    }
+                } catch (error) {
+                    alert('❌ Error verifying password. Please try again.');
+                    return;
+                }
+            }
+
+            CONFIG.user = { name, email, role };
+            localStorage.setItem('ticketSystemUser', JSON.stringify(CONFIG.user));
+            showDashboard();
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('ticketSystemUser');
+            CONFIG.user = { name: '', email: '', role: '' };
+            location.reload();
+        }
+
+        // ============ DASHBOARD ============
+        async function showDashboard() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('dashboardSection').classList.remove('hidden');
+
+            document.getElementById('userName').textContent = CONFIG.user.name;
+            document.getElementById('userEmail').textContent = CONFIG.user.email;
+
+            const roleBadge = document.getElementById('roleBadge');
+            if (CONFIG.user.role === 'clerk') {
+                roleBadge.textContent = '🎫 Clerk';
+                roleBadge.className = 'role-badge role-clerk';
+                document.getElementById('requestorView').classList.add('hidden');
+                document.getElementById('clerkView').classList.remove('hidden');
+                document.getElementById('managerViewBtn').classList.remove('hidden');
+                document.getElementById('reportViewBtn').classList.remove('hidden');
+            } else {
+                roleBadge.textContent = '📝 Requestor';
+                roleBadge.className = 'role-badge role-requestor';
+                document.getElementById('requestorView').classList.remove('hidden');
+                document.getElementById('clerkView').classList.add('hidden');
+            }
+
+            await loadConfigData();
+            await refreshData();
+
+            // Auto-refresh for clerks
+            if (CONFIG.user.role === 'clerk') {
+                setInterval(refreshData, CONFIG.REFRESH_INTERVAL);
+            }
+        }
+
+        async function loadConfigData() {
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getConfig`);
+                const data = await response.json();
+
+                // Populate client dropdowns
+                const clientSelects = [document.getElementById('client'), document.getElementById('reportClient')];
+                clientSelects.forEach(select => {
+                    if (select) {
+                        select.innerHTML = '<option value="">Select client...</option>';
+                        (data.clients || []).forEach(client => {
+                            const option = document.createElement('option');
+                            option.value = client;
+                            option.textContent = client;
+                            select.appendChild(option);
+                        });
+                    }
+                });
+
+                // Populate department dropdown
+                const deptSelect = document.getElementById('department');
+                if (deptSelect && data.departments) {
+                    deptSelect.innerHTML = '<option value="">Select department...</option>';
+                    data.departments.forEach(dept => {
+                        const option = document.createElement('option');
+                        option.value = dept;
+                        option.textContent = dept;
+                        deptSelect.appendChild(option);
+                    });
+                }
+
+                // Store drivers
+                drivers = data.drivers || [];
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+        }
+
+        async function refreshData() {
+            if (CONFIG.user.role === 'clerk') {
+                await loadClerkQueue();
+                await loadClerkMetrics();
+            } else {
+                await loadMyTickets();
+            }
+        }
+
+        // ============ REQUESTOR FUNCTIONS ============
+        async function handleSubmitTicket(e) {
+            e.preventDefault();
+
+            const formData = {
+                requestorName: CONFIG.user.name,
+                requestorEmail: CONFIG.user.email,
+                client: document.getElementById('client').value,
+                department: document.getElementById('department').value,
+                requestType: document.querySelector('input[name="requestType"]:checked')?.value,
+                location: document.getElementById('location').value,
+                quantity: document.getElementById('quantity').value,
+                priority: document.querySelector('input[name="priority"]:checked')?.value,
+                description: document.getElementById('description').value
+            };
+
+            try {
+                const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'submitTicket', ...formData })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    alert(`✅ Ticket Created!\n\nTicket ID: ${result.ticketID}\n\nYou can track it in "My Tickets" below.`);
+                    document.getElementById('newTicketForm').reset();
+                    loadMyTickets();
+                } else {
+                    alert('❌ Error creating ticket: ' + (result.error || 'Please try again.'));
+                }
+            } catch (error) {
+                console.error('Error submitting ticket:', error);
+                alert('❌ Error submitting ticket. Please check your connection.');
+            }
+        }
+
+        async function loadMyTickets() {
+            const container = document.getElementById('myTicketsContainer');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>';
+
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getRequestorTickets&email=${encodeURIComponent(CONFIG.user.email)}`);
+                const data = await response.json();
+
+                if (data.tickets && data.tickets.length > 0) {
+                    container.innerHTML = data.tickets.map(ticket => createRequestorTicketCard(ticket)).join('');
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📭</div>
+                            <h3>No Tickets Yet</h3>
+                            <p>Submit your first request using the form above!</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+                container.innerHTML = '<div style="color: #c62828; padding: 20px;">Error loading tickets. Please refresh the page.</div>';
+            }
+        }
+
+        function createRequestorTicketCard(ticket) {
+            const statusClass = getStatusClass(ticket.status);
+            const priorityBadge = ticket.priority === 'Urgent' ? '<span class="badge badge-urgent">🔴 URGENT</span>' : '';
+
+            return `
+                <div class="ticket-card ${ticket.priority === 'Urgent' ? 'urgent' : ''}">
+                    <div class="ticket-header">
+                        <div class="ticket-id">${ticket.ticketID}</div>
+                        <div>
+                            <span class="badge ${statusClass}">${ticket.status}</span>
+                            ${priorityBadge}
+                        </div>
+                    </div>
+
+                    <div class="ticket-info">
+                        <div class="info-item">
+                            <div class="info-label">Client</div>
+                            <div class="info-value">${ticket.client || 'N/A'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Department</div>
+                            <div class="info-value">${ticket.department || 'N/A'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Request Type</div>
+                            <div class="info-value">${ticket.requestType}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Location</div>
+                            <div class="info-value">${ticket.location}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Created</div>
+                            <div class="info-value">${formatDateTime(ticket.createdAt)}</div>
+                        </div>
+                    </div>
+
+                    <div class="ticket-description">${ticket.description}</div>
+
+                    ${createTimeline(ticket)}
+                </div>
+            `;
+        }
+
+        // ============ CLERK FUNCTIONS ============
+        async function loadClerkQueue() {
+            const container = document.getElementById('ticketQueueContainer');
+
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkQueue`);
+                const data = await response.json();
+
+                allTickets = data.tickets || [];
+                updateTabCounts();
+                renderTicketQueue();
+            } catch (error) {
+                console.error('Error loading queue:', error);
+                container.innerHTML = '<div style="color: #c62828; padding: 20px;">Error loading tickets. Please refresh.</div>';
+            }
+        }
+
+        async function loadClerkMetrics() {
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkMetrics&clerkName=${encodeURIComponent(CONFIG.user.name)}`);
+                const data = await response.json();
+
+                if (data.metrics) {
+                    updateMetricDisplay('metricAck', data.metrics.avgAcknowledge, 5);
+                    updateMetricDisplay('metricAssign', data.metrics.avgAssign, 10);
+                    updateMetricDisplay('metricProgress', data.metrics.avgInProgress, 15);
+                    updateMetricDisplay('metricTotal', data.metrics.avgTotal, 30);
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+            }
+        }
+
+        function updateMetricDisplay(elementId, value, target) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            if (value === null || value === undefined) {
+                el.textContent = '--';
+                el.className = 'metric-value';
+            } else {
+                el.textContent = formatMinutes(value);
+                el.className = 'metric-value ' + (value <= target ? 'metric-good' : value <= target * 1.5 ? 'metric-warning' : 'metric-bad');
+            }
+        }
+
+        function updateTabCounts() {
+            const counts = {
+                all: { total: 0, urgent: 0 },
+                replenishment: { total: 0, urgent: 0 },
+                cyclecount: { total: 0, urgent: 0 },
+                supplies: { total: 0, urgent: 0 },
+                other: { total: 0, urgent: 0 }
+            };
+
+            allTickets.forEach(t => {
+                counts.all.total++;
+                if (t.priority === 'Urgent') counts.all.urgent++;
+
+                const typeKey = getTypeKey(t.requestType);
+                counts[typeKey].total++;
+                if (t.priority === 'Urgent') counts[typeKey].urgent++;
+            });
+
+            Object.keys(counts).forEach(key => {
+                const countEl = document.getElementById('count' + capitalize(key));
+                const urgentEl = document.getElementById('urgent' + capitalize(key));
+
+                if (countEl) countEl.textContent = counts[key].total;
+                if (urgentEl) urgentEl.classList.toggle('hidden', counts[key].urgent === 0);
+            });
+        }
+
+        function getTypeKey(requestType) {
+            const map = {
+                'Replenishment': 'replenishment',
+                'Cycle Count': 'cyclecount',
+                'Supplies Needed': 'supplies',
+                'Other': 'other'
+            };
+            return map[requestType] || 'other';
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+            renderTicketQueue();
+        }
+
+        function renderTicketQueue() {
+            const container = document.getElementById('ticketQueueContainer');
+
+            let filtered = [...allTickets];
+
+            // Filter by tab
+            if (currentTab !== 'all') {
+                const typeMap = {
+                    'replenishment': 'Replenishment',
+                    'cyclecount': 'Cycle Count',
+                    'supplies': 'Supplies Needed',
+                    'other': 'Other'
+                };
+                filtered = filtered.filter(t => t.requestType === typeMap[currentTab]);
+            }
+
+            // Sort: Urgent first, then FIFO
+            filtered.sort((a, b) => {
+                if (a.priority === 'Urgent' && b.priority !== 'Urgent') return -1;
+                if (a.priority !== 'Urgent' && b.priority === 'Urgent') return 1;
+                return new Date(a.createdAt) - new Date(b.createdAt);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✨</div>
+                        <h3>No tickets in this queue</h3>
+                        <p>Great job! Check back soon for new requests.</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = filtered.map(t => createClerkTicketCard(t)).join('');
+            }
+        }
+
+        function createClerkTicketCard(ticket) {
+            const statusClass = getStatusClass(ticket.status);
+            const isUrgent = ticket.priority === 'Urgent';
+
+            return `
+                <div class="ticket-card ${isUrgent ? 'urgent' : ''}">
+                    <div class="ticket-header">
+                        <div>
+                            <span class="ticket-id">${ticket.ticketID}</span>
+                            ${isUrgent ? '<span class="badge badge-urgent">🔴 URGENT</span>' : ''}
+                        </div>
+                        <span class="badge ${statusClass}">${ticket.status}</span>
+                    </div>
+
+                    <div class="ticket-info">
+                        <div class="info-item">
+                            <div class="info-label">Request Type</div>
+                            <div class="info-value">${ticket.requestType}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Client</div>
+                            <div class="info-value">${ticket.client || 'N/A'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Department</div>
+                            <div class="info-value">${ticket.department || 'N/A'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Location</div>
+                            <div class="info-value">${ticket.location}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Requested By</div>
+                            <div class="info-value">${ticket.requestorName}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Created</div>
+                            <div class="info-value">${formatDateTime(ticket.createdAt)}</div>
+                        </div>
+                    </div>
+
+                    <div class="ticket-description">${ticket.description}</div>
+
+                    ${ticket.assignedTo ? `<p style="margin-bottom: 10px;"><strong>Assigned to:</strong> ${ticket.assignedTo}</p>` : ''}
+
+                    <div class="ticket-actions">
+                        ${renderTicketActions(ticket)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTicketActions(ticket) {
+            const actions = [];
+            const id = ticket.ticketID;
+
+            switch (ticket.status) {
+                case 'New':
+                    actions.push(`<button class="btn btn-warning btn-sm" onclick="acknowledgeTicket('${id}')">✓ Acknowledge</button>`);
+                    break;
+                case 'Acknowledged':
+                    actions.push(`
+                        <select class="driver-select" id="driver-${id}">
+                            <option value="">Select Driver...</option>
+                            ${drivers.map(d => `<option value="${d}">${d}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-info btn-sm" onclick="assignTicket('${id}')">🚗 Assign</button>
+                    `);
+                    break;
+                case 'Assigned':
+                    actions.push(`<button class="btn btn-purple btn-sm" onclick="markInProgress('${id}')">▶️ In Progress</button>`);
+                    break;
+                case 'In Progress':
+                    actions.push(`<button class="btn btn-success btn-sm" onclick="markComplete('${id}')">✅ Complete</button>`);
+                    break;
+                case 'Complete':
+                    actions.push(`<button class="btn btn-secondary btn-sm" onclick="closeTicket('${id}')">📁 Close</button>`);
+                    break;
+            }
+
+            return actions.join('');
+        }
+
+        // ============ TICKET ACTIONS ============
+        async function acknowledgeTicket(ticketID) {
+            await performAction('acknowledgeTicket', { ticketID, clerkName: CONFIG.user.name });
+        }
+
+        async function assignTicket(ticketID) {
+            const driverName = document.getElementById(`driver-${ticketID}`).value;
+            if (!driverName) {
+                alert('Please select a driver');
+                return;
+            }
+            await performAction('assignTicket', { ticketID, driverName });
+        }
+
+        async function markInProgress(ticketID) {
+            await performAction('markInProgress', { ticketID });
+        }
+
+        async function markComplete(ticketID) {
+            await performAction('markComplete', { ticketID });
+        }
+
+        async function closeTicket(ticketID) {
+            await performAction('closeTicket', { ticketID, clerkName: CONFIG.user.name });
+        }
+
+        async function performAction(action, data) {
+            try {
+                const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ action, ...data })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    await refreshData();
+                } else {
+                    alert('❌ Error: ' + (result.error || 'Action failed'));
+                }
+            } catch (error) {
+                alert('❌ Error performing action');
+                console.error(error);
+            }
+        }
+
+        // ============ MANAGER VIEW ============
+        async function showManagerView() {
+            document.getElementById('clerkView').classList.add('hidden');
+            document.getElementById('managerView').classList.remove('hidden');
+            await loadManagerData();
+        }
+
+        function hideManagerView() {
+            document.getElementById('managerView').classList.add('hidden');
+            document.getElementById('clerkView').classList.remove('hidden');
+        }
+
+        async function loadManagerData() {
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getManagerMetrics`);
+                const data = await response.json();
+
+                if (data.metrics) {
+                    const m = data.metrics;
+
+                    // Overview stats
+                    document.getElementById('statActive').textContent = m.activeTickets || 0;
+                    document.getElementById('statResolved').textContent = m.resolvedToday || 0;
+                    document.getElementById('statUrgent').textContent = m.urgentPending || 0;
+                    document.getElementById('statAvgTime').textContent = formatMinutes(m.avgResolution);
+
+                    // By Request Type
+                    renderBreakdown('breakdownType', m.byRequestType || []);
+
+                    // By Client
+                    renderBreakdown('breakdownClient', m.byClient || []);
+
+                    // By Department
+                    renderBreakdown('breakdownDepartment', m.byDepartment || []);
+
+                    // Clerk Performance
+                    renderClerkPerformance(m.clerkPerformance || []);
+
+                    // Board Overview
+                    renderBoardOverview(m.boardOverview || {});
+                }
+            } catch (error) {
+                console.error('Error loading manager data:', error);
+            }
+        }
+
+        function renderBreakdown(containerId, data) {
+            const container = document.getElementById(containerId);
+            if (!container || !data.length) {
+                container.innerHTML = '<p style="color: #999;">No data available</p>';
+                return;
+            }
+
+            const maxCount = Math.max(...data.map(d => d.count));
+            container.innerHTML = data.map(item => `
+                <div class="breakdown-row">
+                    <span>${item.name || item.type || item.client || item.department}</span>
+                    <div style="display: flex; align-items: center;">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${(item.count / maxCount) * 100}%"></div>
+                        </div>
+                        <strong>${item.count}</strong>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderClerkPerformance(data) {
+            const tbody = document.getElementById('clerkPerformanceBody');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">No data available</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.map(clerk => `
+                <tr>
+                    <td>${clerk.name}</td>
+                    <td>${clerk.ticketsHandled}</td>
+                    <td class="${getMetricClass(clerk.avgAcknowledge, 5)}">${formatMinutes(clerk.avgAcknowledge)}</td>
+                    <td class="${getMetricClass(clerk.avgAssign, 10)}">${formatMinutes(clerk.avgAssign)}</td>
+                    <td class="${getMetricClass(clerk.avgTotal, 30)}">${formatMinutes(clerk.avgTotal)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderBoardOverview(data) {
+            const container = document.getElementById('boardOverview');
+            const statuses = ['New', 'Acknowledged', 'Assigned', 'In Progress', 'Complete', 'Closed'];
+
+            container.innerHTML = statuses.map(status => `
+                <div class="stat-card" style="background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf3 100%); color: #333;">
+                    <div class="stat-value">${data[status] || 0}</div>
+                    <div class="stat-label">${status}</div>
+                </div>
+            `).join('');
+        }
+
+        // ============ REPORT VIEW ============
+        function showReportView() {
+            document.getElementById('clerkView').classList.add('hidden');
+            document.getElementById('reportView').classList.remove('hidden');
+        }
+
+        function hideReportView() {
+            document.getElementById('reportView').classList.add('hidden');
+            document.getElementById('clerkView').classList.remove('hidden');
+        }
+
+        async function generateReport() {
+            const client = document.getElementById('reportClient').value;
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+
+            if (!client || !startDate || !endDate) {
+                alert('Please select a client and date range');
+                return;
+            }
+
+            const container = document.getElementById('reportResults');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Generating report...</p></div>';
+
+            try {
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClientTimeReport&client=${encodeURIComponent(client)}&startDate=${startDate}&endDate=${endDate}`);
+                const data = await response.json();
+
+                if (data.report) {
+                    renderReport(data.report);
+                } else {
+                    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><h3>No data found</h3><p>No tickets found for the selected criteria</p></div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div style="color: #c62828; padding: 20px;">Error generating report</div>';
+                console.error(error);
+            }
+        }
+
+        function renderReport(report) {
+            const container = document.getElementById('reportResults');
+
+            container.innerHTML = `
+                <div class="stats-grid" style="margin-bottom: 30px;">
+                    <div class="stat-card">
+                        <div class="stat-value">${report.totalTickets || 0}</div>
+                        <div class="stat-label">Total Tickets</div>
+                    </div>
+                    <div class="stat-card blue">
+                        <div class="stat-value">${formatMinutes(report.avgCompletionTime)}</div>
+                        <div class="stat-label">Avg Completion Time</div>
+                    </div>
+                    <div class="stat-card red">
+                        <div class="stat-value">${report.urgentCount || 0}</div>
+                        <div class="stat-label">Urgent Tickets</div>
+                    </div>
+                    <div class="stat-card green">
+                        <div class="stat-value">${report.onTimeRate || 0}%</div>
+                        <div class="stat-label">On-Time Rate</div>
+                    </div>
+                </div>
+
+                <h3 style="margin-bottom: 15px;">📋 Ticket Details</h3>
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Ticket ID</th>
+                                <th>Type</th>
+                                <th>Created</th>
+                                <th>Completed</th>
+                                <th>Time to Complete</th>
+                                <th>Priority</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${(report.tickets || []).map(t => `
+                                <tr>
+                                    <td>${t.ticketID}</td>
+                                    <td>${t.requestType}</td>
+                                    <td>${formatDateTime(t.createdAt)}</td>
+                                    <td>${formatDateTime(t.completedAt)}</td>
+                                    <td class="${getMetricClass(t.completionTime, 30)}">${formatMinutes(t.completionTime)}</td>
+                                    <td><span class="badge ${t.priority === 'Urgent' ? 'badge-urgent' : 'badge-new'}">${t.priority}</span></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ============ HELPER FUNCTIONS ============
+        function createTimeline(ticket) {
+            let timeline = '<div class="timeline">';
+
+            const events = [
+                { label: '🟢 Created', time: ticket.createdAt, by: ticket.requestorName },
+                { label: '🟢 Acknowledged', time: ticket.acknowledgedAt, by: ticket.acknowledgedBy },
+                { label: '🟢 Assigned', time: ticket.assignedAt, to: ticket.assignedTo },
+                { label: '🔵 In Progress', time: ticket.startedAt },
+                { label: '🟣 Completed', time: ticket.completedAt },
+                { label: '🟢 Closed', time: ticket.closedAt, by: ticket.closedBy }
+            ];
+
+            events.forEach(event => {
+                if (event.time) {
+                    timeline += `
+                        <div class="timeline-item completed">
+                            <div class="timeline-label">${event.label}</div>
+                            <div class="timeline-value">${formatDateTime(event.time)}</div>
+                            ${event.by ? `<div class="timeline-value">By: ${event.by}</div>` : ''}
+                            ${event.to ? `<div class="timeline-value">To: ${event.to}</div>` : ''}
+                        </div>
+                    `;
+                }
+            });
+
+            timeline += '</div>';
+            return timeline;
+        }
+
+        function getStatusClass(status) {
+            const map = {
+                'New': 'badge-new',
+                'Acknowledged': 'badge-acknowledged',
+                'Assigned': 'badge-assigned',
+                'In Progress': 'badge-inprogress',
+                'Complete': 'badge-complete',
+                'Closed': 'badge-closed',
+                'Resolved': 'badge-resolved'
+            };
+            return map[status] || 'badge-new';
+        }
+
+        function getMetricClass(value, target) {
+            if (value === null || value === undefined) return '';
+            if (value <= target) return 'metric-good';
+            if (value <= target * 1.5) return 'metric-warning';
+            return 'metric-bad';
+        }
+
+        function formatMinutes(minutes) {
+            if (minutes === null || minutes === undefined) return '--';
+            if (minutes < 60) return Math.round(minutes) + ' min';
+            const hours = Math.floor(minutes / 60);
+            const mins = Math.round(minutes % 60);
+            return hours + 'h ' + mins + 'm';
+        }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return 'N/A';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleString();
+            } catch {
+                return dateStr;
+            }
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+    </script>
+</body>
+</html>
