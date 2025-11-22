@@ -251,8 +251,12 @@
 
     async delete(id){
       if(!confirm('Delete this entry?')) return;
-      await this.db.deleteEntryById(id);
-      await this.load();
+      const res = await this.db.deleteEntryById(id);
+      if (res.success) {
+        await this.load();
+      } else {
+        alert('Delete failed: ' + (res.error || 'Unknown error'));
+      }
     }
 
     openEdit(id){
