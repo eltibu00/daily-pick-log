@@ -1216,13 +1216,15 @@
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkQueue`);
                 const data = await response.json();
 
-                // GS returns separate arrays: newTickets, acknowledgedTickets, assignedTickets, inProgressTickets
+                // GS returns separate arrays: newTickets, acknowledgedTickets, assignedTickets, inProgressTickets, completeTickets
                 allTickets = [
                     ...(data.newTickets || []),
                     ...(data.acknowledgedTickets || []),
                     ...(data.assignedTickets || []),
-                    ...(data.inProgressTickets || [])
+                    ...(data.inProgressTickets || []),
+                    ...(data.completeTickets || [])
                 ];
+                console.log('Loaded tickets:', allTickets.length, allTickets); // Debug log
                 updateTabCounts();
                 renderTicketQueue();
             } catch (error) {
