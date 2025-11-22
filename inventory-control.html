@@ -994,7 +994,8 @@
                     const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=verifyClerkPassword&password=${encodeURIComponent(password)}`);
                     const result = await response.json();
 
-                    if (!result.success) {
+                    // GS returns {valid: true/false}
+                    if (!result.valid) {
                         alert('❌ Invalid clerk password');
                         return;
                     }
@@ -1049,15 +1050,16 @@
 
         async function loadConfigData() {
             try {
-                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getConfig`);
-                const data = await response.json();
+                // Get config data
+                const configResponse = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getConfig`);
+                const configData = await configResponse.json();
 
                 // Populate client dropdowns
                 const clientSelects = [document.getElementById('client'), document.getElementById('reportClient')];
                 clientSelects.forEach(select => {
                     if (select) {
                         select.innerHTML = '<option value="">Select client...</option>';
-                        (data.clients || []).forEach(client => {
+                        (configData.clients || []).forEach(client => {
                             const option = document.createElement('option');
                             option.value = client;
                             option.textContent = client;
@@ -1068,9 +1070,9 @@
 
                 // Populate department dropdown
                 const deptSelect = document.getElementById('department');
-                if (deptSelect && data.departments) {
+                if (deptSelect && configData.departments) {
                     deptSelect.innerHTML = '<option value="">Select department...</option>';
-                    data.departments.forEach(dept => {
+                    configData.departments.forEach(dept => {
                         const option = document.createElement('option');
                         option.value = dept;
                         option.textContent = dept;
@@ -1078,8 +1080,10 @@
                     });
                 }
 
-                // Store drivers
-                drivers = data.drivers || [];
+                // Get drivers separately
+                const driversResponse = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getDrivers`);
+                const driversData = await driversResponse.json();
+                drivers = (driversData || []).map(d => d.name);
             } catch (error) {
                 console.error('Error loading config:', error);
             }
@@ -1136,11 +1140,15 @@
             container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading your tickets...</p></div>';
 
             try {
-                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getRequestorTickets&email=${encodeURIComponent(CONFIG.user.email)}`);
+                // GS uses 'requestorEmail' parameter
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getRequestorTickets&requestorEmail=${encodeURIComponent(CONFIG.user.email)}`);
                 const data = await response.json();
 
-                if (data.tickets && data.tickets.length > 0) {
-                    container.innerHTML = data.tickets.map(ticket => createRequestorTicketCard(ticket)).join('');
+                // GS returns {activeTickets: [], resolvedTickets: []}
+                const allTickets = [...(data.activeTickets || []), ...(data.resolvedTickets || [])];
+
+                if (allTickets.length > 0) {
+                    container.innerHTML = allTickets.map(ticket => createRequestorTicketCard(ticket)).join('');
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
@@ -1208,7 +1216,13 @@
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkQueue`);
                 const data = await response.json();
 
-                allTickets = data.tickets || [];
+                // GS returns separate arrays: newTickets, acknowledgedTickets, assignedTickets, inProgressTickets
+                allTickets = [
+                    ...(data.newTickets || []),
+                    ...(data.acknowledgedTickets || []),
+                    ...(data.assignedTickets || []),
+                    ...(data.inProgressTickets || [])
+                ];
                 updateTabCounts();
                 renderTicketQueue();
             } catch (error) {
@@ -1222,11 +1236,12 @@
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkMetrics&clerkName=${encodeURIComponent(CONFIG.user.name)}`);
                 const data = await response.json();
 
-                if (data.metrics) {
-                    updateMetricDisplay('metricAck', data.metrics.avgAcknowledge, 5);
-                    updateMetricDisplay('metricAssign', data.metrics.avgAssign, 10);
-                    updateMetricDisplay('metricProgress', data.metrics.avgInProgress, 15);
-                    updateMetricDisplay('metricTotal', data.metrics.avgTotal, 30);
+                // GS returns: avgTimeToAck, avgTimeToAssign, avgTimeToStart, avgTotalClerkProcessing
+                if (data) {
+                    updateMetricDisplay('metricAck', data.avgTimeToAck, 5);
+                    updateMetricDisplay('metricAssign', data.avgTimeToAssign, 10);
+                    updateMetricDisplay('metricProgress', data.avgTimeToStart, 15);
+                    updateMetricDisplay('metricTotal', data.avgTotalClerkProcessing, 30);
                 }
             } catch (error) {
                 console.error('Error loading metrics:', error);
@@ -1424,11 +1439,13 @@
         }
 
         async function markInProgress(ticketID) {
-            await performAction('markInProgress', { ticketID });
+            // GS uses 'startTicket' action
+            await performAction('startTicket', { ticketID, driverName: CONFIG.user.name });
         }
 
         async function markComplete(ticketID) {
-            await performAction('markComplete', { ticketID });
+            // GS uses 'completeTicket' action
+            await performAction('completeTicket', { ticketID, driverName: CONFIG.user.name });
         }
 
         async function closeTicket(ticketID) {
@@ -1468,32 +1485,37 @@
 
         async function loadManagerData() {
             try {
-                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getManagerMetrics`);
+                // GS uses 'getManagerDashboard' action
+                const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getManagerDashboard`);
                 const data = await response.json();
 
-                if (data.metrics) {
-                    const m = data.metrics;
+                if (data) {
+                    const m = data.metrics || {};
 
                     // Overview stats
-                    document.getElementById('statActive').textContent = m.activeTickets || 0;
-                    document.getElementById('statResolved').textContent = m.resolvedToday || 0;
-                    document.getElementById('statUrgent').textContent = m.urgentPending || 0;
-                    document.getElementById('statAvgTime').textContent = formatMinutes(m.avgResolution);
+                    document.getElementById('statActive').textContent = m.totalActive || 0;
+                    document.getElementById('statResolved').textContent = m.totalResolved || 0;
+                    document.getElementById('statUrgent').textContent = m.urgentActive || 0;
+                    document.getElementById('statAvgTime').textContent = formatMinutes(m.avgResolutionTime);
 
-                    // By Request Type
-                    renderBreakdown('breakdownType', m.byRequestType || []);
+                    // By Request Type - convert object to array
+                    const typeData = Object.entries(data.typeCounts || {}).map(([name, count]) => ({ name, count }));
+                    renderBreakdown('breakdownType', typeData);
 
-                    // By Client
-                    renderBreakdown('breakdownClient', m.byClient || []);
+                    // By Client - GS doesn't have this, show status counts instead
+                    const statusData = Object.entries(data.statusCounts || {}).map(([name, count]) => ({ name, count }));
+                    renderBreakdown('breakdownClient', statusData);
 
-                    // By Department
-                    renderBreakdown('breakdownDepartment', m.byDepartment || []);
+                    // By Department - use driver stats
+                    const driverData = Object.entries(data.driverStats || {}).map(([name, stats]) => ({ name, count: stats.active }));
+                    renderBreakdown('breakdownDepartment', driverData);
 
-                    // Clerk Performance
-                    renderClerkPerformance(m.clerkPerformance || []);
+                    // Clerk Performance - use byClerk from metrics if available
+                    const clerkData = [];
+                    renderClerkPerformance(clerkData);
 
                     // Board Overview
-                    renderBoardOverview(m.boardOverview || {});
+                    renderBoardOverview(data.statusCounts || {});
                 }
             } catch (error) {
                 console.error('Error loading manager data:', error);
@@ -1577,10 +1599,11 @@
 
             try {
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClientTimeReport&client=${encodeURIComponent(client)}&startDate=${startDate}&endDate=${endDate}`);
-                const data = await response.json();
+                const report = await response.json();
 
-                if (data.report) {
-                    renderReport(data.report);
+                // GS returns the report directly (not wrapped in data.report)
+                if (report && report.summary && report.summary.totalTickets > 0) {
+                    renderReport(report);
                 } else {
                     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><h3>No data found</h3><p>No tickets found for the selected criteria</p></div>';
                 }
@@ -1592,25 +1615,40 @@
 
         function renderReport(report) {
             const container = document.getElementById('reportResults');
+            const summary = report.summary || {};
 
             container.innerHTML = `
                 <div class="stats-grid" style="margin-bottom: 30px;">
                     <div class="stat-card">
-                        <div class="stat-value">${report.totalTickets || 0}</div>
+                        <div class="stat-value">${summary.totalTickets || 0}</div>
                         <div class="stat-label">Total Tickets</div>
                     </div>
                     <div class="stat-card blue">
-                        <div class="stat-value">${formatMinutes(report.avgCompletionTime)}</div>
-                        <div class="stat-label">Avg Completion Time</div>
+                        <div class="stat-value">${formatMinutes(summary.avgMinutes)}</div>
+                        <div class="stat-label">Avg Resolution Time</div>
                     </div>
                     <div class="stat-card red">
-                        <div class="stat-value">${report.urgentCount || 0}</div>
-                        <div class="stat-label">Urgent Tickets</div>
+                        <div class="stat-value">${formatMinutes(summary.totalMinutes)}</div>
+                        <div class="stat-label">Total Time</div>
                     </div>
                     <div class="stat-card green">
-                        <div class="stat-value">${report.onTimeRate || 0}%</div>
-                        <div class="stat-label">On-Time Rate</div>
+                        <div class="stat-value">${report.client}</div>
+                        <div class="stat-label">Client</div>
                     </div>
+                </div>
+
+                <h3 style="margin-bottom: 15px;">📊 By Activity Type</h3>
+                <div class="breakdown-card" style="margin-bottom: 20px;">
+                    ${Object.entries(report.byActivity || {}).map(([type, data]) => `
+                        <div class="breakdown-row">
+                            <span>${type}</span>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span>${data.tickets} tickets</span>
+                                <span>${formatMinutes(data.avgMinutes)} avg</span>
+                                <strong>${data.percentage}%</strong>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
 
                 <h3 style="margin-bottom: 15px;">📋 Ticket Details</h3>
@@ -1619,22 +1657,22 @@
                         <thead>
                             <tr>
                                 <th>Ticket ID</th>
+                                <th>Date</th>
+                                <th>Department</th>
                                 <th>Type</th>
-                                <th>Created</th>
-                                <th>Completed</th>
-                                <th>Time to Complete</th>
-                                <th>Priority</th>
+                                <th>Resolution Time</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${(report.tickets || []).map(t => `
                                 <tr>
                                     <td>${t.ticketID}</td>
+                                    <td>${t.date}</td>
+                                    <td>${t.department}</td>
                                     <td>${t.requestType}</td>
-                                    <td>${formatDateTime(t.createdAt)}</td>
-                                    <td>${formatDateTime(t.completedAt)}</td>
-                                    <td class="${getMetricClass(t.completionTime, 30)}">${formatMinutes(t.completionTime)}</td>
-                                    <td><span class="badge ${t.priority === 'Urgent' ? 'badge-urgent' : 'badge-new'}">${t.priority}</span></td>
+                                    <td class="${getMetricClass(t.resolutionTime, 30)}">${formatMinutes(t.resolutionTime)}</td>
+                                    <td><span class="badge badge-resolved">${t.status}</span></td>
                                 </tr>
                             `).join('')}
                         </tbody>
