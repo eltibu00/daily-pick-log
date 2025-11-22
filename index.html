@@ -226,11 +226,30 @@
         const f = this.state.filter;
         const ok = f==='all' || (f==='completed'&&e.pickupComplete) || (f==='pending'&&!e.pickupComplete) || (f==='issues'&&(e.pickupComplete&&!e.qualityCheck));
         return hit && ok;
+      }).sort((a, b) => {
+        const dateA = new Date(a.scheduledDate || 0);
+        const dateB = new Date(b.scheduledDate || 0);
+        return dateA - dateB;
       });
     }
 
     async add(){
       const fd = this.state.newForm;
+      // Validate required fields
+      if (!fd.carrier) {
+        alert('Carrier is required.');
+        return;
+      }
+      if (!fd.shipTo) {
+        alert('Ship To is required.');
+        return;
+      }
+      if (!fd.scheduledDate) {
+        alert('Scheduled Date is required.');
+        return;
+      }
+      // Set date to today
+      fd.date = new Date().toISOString().split('T')[0];
       fd.createdBy = this.state.userName;
       await this.db.addEntry(fd);
       this.state.showAdd = false;
@@ -611,8 +630,8 @@
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="text-sm block mb-1">Date</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.date)}" onchange="app.state.newForm.date=this.value">
+              <label class="text-sm block mb-1">Entry Date</label>
+              <input type="date" class="w-full border rounded px-3 py-2 bg-gray-100" value="${new Date().toISOString().split('T')[0]}" readonly>
             </div>
             <div>
               <label class="text-sm block mb-1">Client</label>
@@ -622,8 +641,8 @@
               </select>
             </div>
             <div>
-              <label class="text-sm block mb-1">Ship To</label>
-              <input class="w-full border rounded px-3 py-2" value="${f.shipTo||''}" onchange="app.state.newForm.shipTo=this.value">
+              <label class="text-sm block mb-1">Ship To <span class="text-red-500">*</span></label>
+              <input class="w-full border rounded px-3 py-2" value="${f.shipTo||''}" onchange="app.state.newForm.shipTo=this.value" required>
             </div>
             <div>
               <label class="text-sm block mb-1">Order#</label>
@@ -634,8 +653,8 @@
               <input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets||''}" onchange="app.state.newForm.pallets=this.value">
             </div>
             <div>
-              <label class="text-sm block mb-1">Carrier</label>
-              <select class="w-full border rounded px-3 py-2" onchange="app.state.newForm.carrier=this.value">
+              <label class="text-sm block mb-1">Carrier <span class="text-red-500">*</span></label>
+              <select class="w-full border rounded px-3 py-2" onchange="app.state.newForm.carrier=this.value" required>
                 <option value="">Select Carrier...</option>
                 ${CARRIERS.map(c => `<option value="${c}" ${f.carrier===c?'selected':''}>${c}</option>`).join('')}
               </select>
@@ -645,8 +664,8 @@
               <input class="w-full border rounded px-3 py-2" value="${f.pickupNum||''}" onchange="app.state.newForm.pickupNum=this.value">
             </div>
             <div>
-              <label class="text-sm block mb-1">Scheduled</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.scheduledDate)}" onchange="app.state.newForm.scheduledDate=this.value">
+              <label class="text-sm block mb-1">Scheduled Date <span class="text-red-500">*</span></label>
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.scheduledDate)}" onchange="app.state.newForm.scheduledDate=this.value" required>
             </div>
             <div class="col-span-2">
               <label class="text-sm block mb-1">Created By: <strong>${this.state.userName}</strong></label>
