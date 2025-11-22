@@ -20,7 +20,9 @@
     SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwqA6hTkfj9ziHMUc6Cp1AHXw_9zrd5loFO0cilQngkmUs-0i08DmRt0sUp17cQIMb1/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
     SHEET_NAME: 'Sheet1',
-    AUTO_ARCHIVE_DAYS: 30
+    AUTO_ARCHIVE_DAYS: 30,
+    // Users who can delete entries (case-insensitive)
+    ADMINS: ['Roberto', 'Admin']
   };
 
   // Client list for dropdown
@@ -128,6 +130,11 @@
         updating: new Set() // Track which rows are being updated
       };
       this.init();
+    }
+
+    isAdmin(){
+      const user = this.state.userName.toLowerCase();
+      return CONFIG.ADMINS.some(admin => admin.toLowerCase() === user);
     }
 
     emptyForm(){
@@ -431,7 +438,8 @@
             </div>
           </td>
           <td class="px-4 py-3 text-center">
-            <button class="text-indigo-600" data-edit data-id="${e.id}">✏️</button>
+            <button class="text-indigo-600 ${this.isAdmin() ? 'mr-2' : ''}" data-edit data-id="${e.id}">✏️</button>
+            ${this.isAdmin() ? `<button class="text-red-600" data-del data-id="${e.id}">🗑️</button>` : ''}
           </td>
         </tr>
       `).join('');
