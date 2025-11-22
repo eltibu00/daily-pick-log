@@ -192,6 +192,15 @@
       return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
+    // Convert any date format to yyyy-MM-dd for HTML date inputs
+    toInputDate(d){
+      if (!d) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      const dt = new Date(d);
+      if (isNaN(dt)) return '';
+      return dt.toISOString().split('T')[0];
+    }
+
     filtered(){
       const t = this.state.search.toLowerCase();
       return this.state.entries.filter(e=>{
@@ -562,7 +571,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-sm block mb-1">Date</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${f.date||''}" onchange="app.state.newForm.date=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.date)}" onchange="app.state.newForm.date=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Client</label>
@@ -596,7 +605,7 @@
             </div>
             <div>
               <label class="text-sm block mb-1">Scheduled</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate||''}" onchange="app.state.newForm.scheduledDate=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.scheduledDate)}" onchange="app.state.newForm.scheduledDate=this.value">
             </div>
             <div class="col-span-2">
               <label class="text-sm block mb-1">Created By: <strong>${this.state.userName}</strong></label>
@@ -632,7 +641,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-sm block mb-1">Date</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${e.date||''}" onchange="app.state.editing.date=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(e.date)}" onchange="app.state.editing.date=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Client</label>
@@ -666,7 +675,7 @@
             </div>
             <div>
               <label class="text-sm block mb-1">Scheduled</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(e.scheduledDate)}" onchange="app.state.editing.scheduledDate=this.value">
             </div>
             <div class="col-span-2">
               <label class="text-sm text-gray-600">Created by: <strong>${e.createdBy||'Unknown'}</strong></label>
