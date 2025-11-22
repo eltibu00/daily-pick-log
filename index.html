@@ -98,15 +98,6 @@
       const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'autoArchiveOld',days})});
       return r.json();
     }
-    async uploadBOL(id, fileName, fileData, mimeType){
-      const r = await fetch(this.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'uploadBOL',id,fileName,fileData,mimeType})});
-      return r.json();
-    }
-    async getBOLFolderUrl(){
-      const r = await fetch(`${this.url}?action=getBOLFolderUrl`);
-      const j = await r.json();
-      return j.success ? j.url : null;
-    }
   }
 
   // ================== App ==================
@@ -126,8 +117,6 @@
         showArchive: false,
         editing: null,
         newForm: null,
-        uploadingFor: null,
-        bolFolderUrl: null,
         updating: new Set() // Track which rows are being updated
       };
       this.init();
@@ -158,18 +147,14 @@
         qualityCheck: false,
         comments: '',
         createdBy: this.state.userName,
-        bolFile: '',
-        bolFileName: '',
         completedBy: '',
         printedBy: ''
       };
     }
 
     async init(){
-      if (this.state.userName) { 
+      if (this.state.userName) {
         await this.load();
-        // Get BOL folder URL
-        this.state.bolFolderUrl = await this.db.getBOLFolderUrl();
         setInterval(()=>this.load(), 180000);
         await this.db.autoArchiveOld(CONFIG.AUTO_ARCHIVE_DAYS);
       }
@@ -357,58 +342,6 @@
       this.render();
     }
 
-    async handleBOLUpload(id, fileInput) {
-      const file = fileInput.files[0];
-      if (!file) return;
-      
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File too large. Maximum size is 5MB.');
-        fileInput.value = '';
-        return;
-      }
-
-      const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
-      if (!allowedTypes.includes(file.type)) {
-        alert('Invalid file type. Please upload PDF, PNG, or JPG files only.');
-        fileInput.value = '';
-        return;
-      }
-
-      this.state.uploadingFor = id;
-      this.render();
-
-      try {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const base64 = e.target.result.split(',')[1];
-          const res = await this.db.uploadBOL(id, file.name, base64, file.type);
-          
-          if (res.success) {
-            alert('BOL uploaded successfully!');
-            await this.load();
-          } else {
-            alert('Upload failed: ' + (res.error || 'Unknown error'));
-          }
-          
-          this.state.uploadingFor = null;
-          fileInput.value = '';
-          this.render();
-        };
-        reader.onerror = () => {
-          alert('Error reading file');
-          this.state.uploadingFor = null;
-          fileInput.value = '';
-          this.render();
-        };
-        reader.readAsDataURL(file);
-      } catch (error) {
-        alert('Upload error: ' + error.message);
-        this.state.uploadingFor = null;
-        fileInput.value = '';
-        this.render();
-      }
-    }
-
     bindTableEvents() {
       const table = document.querySelector('tbody');
       if (!table) return;
@@ -424,11 +357,6 @@
             const currentValue = t.checked;
             this.updateField(id, field, currentValue);
           }
-        }
-        if (t.matches('input[type="file"][data-bol-upload]')) {
-          const row = t.closest('tr[data-id]');
-          const id = row?.dataset.id;
-          if (id) this.handleBOLUpload(id, t);
         }
       };
 
@@ -485,12 +413,6 @@
           <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="qualityCheck" ${e.qualityCheck?'checked':''} ${this.state.updating.has(`${e.id}-qualityCheck`)?'disabled':''}></td>
           <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
           <td class="px-4 py-3 text-xs text-gray-500">${e.createdBy||''}</td>
-          <td class="px-4 py-3 text-sm">
-            <div class="flex flex-col gap-1">
-              ${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 text-xs underline hover:text-blue-800">${e.bolFileName || 'View BOL'}</a>` : '<span class="text-gray-400 text-xs">No BOL</span>'}
-              ${this.state.uploadingFor === e.id ? '<span class="text-xs text-orange-600">Uploading...</span>' : `<input type="file" accept=".pdf,.png,.jpg,.jpeg" data-bol-upload class="text-xs mt-1" style="font-size:10px;">`}
-            </div>
-          </td>
           <td class="px-4 py-3 text-center">
             <button class="text-indigo-600 ${this.isAdmin() ? 'mr-2' : ''}" data-edit data-id="${e.id}">✏️</button>
             ${this.isAdmin() ? `<button class="text-red-600" data-del data-id="${e.id}">🗑️</button>` : ''}
@@ -505,7 +427,6 @@
               <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
               <p class="text-gray-600">Transportation & Customer Service Operations</p>
               <p class="text-sm text-gray-500">Logged in as: <span class="text-indigo-600 font-semibold">${this.state.userName}</span> (${this.state.userEmail}) <button onclick="app.logout()" class="text-red-500 underline ml-2">Logout</button></p>
-              ${this.state.bolFolderUrl ? `<p class="text-xs text-gray-500 mt-1">📁 <a href="${this.state.bolFolderUrl}" target="_blank" class="text-blue-600 underline">View BOL Files Folder</a></p>` : ''}
             </div>
             <div class="flex gap-2">
               <button class="bg-gray-600 text-white px-4 py-2 rounded" onclick="app.load()">🔄 Refresh</button>
@@ -557,11 +478,10 @@
                   <th class="px-4 py-3 text-center">QC</th>
                   <th class="px-4 py-3 text-left">Comments</th>
                   <th class="px-4 py-3 text-left">Created By</th>
-                  <th class="px-4 py-3 text-left">BOL File</th>
                   <th class="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="19" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="18" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -584,7 +504,6 @@
           <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
           <td class="px-4 py-3 text-sm">${e.createdBy||''}</td>
-          <td class="px-4 py-3 text-sm">${e.bolFile ? `<a href="${e.bolFile}" target="_blank" class="text-blue-600 underline">${e.bolFileName || 'View'}</a>` : 'N/A'}</td>
         </tr>
       `).join('');
 
@@ -611,10 +530,9 @@
                   <th class="px-4 py-3 text-left">Pickup#</th>
                   <th class="px-4 py-3 text-left">Completed</th>
                   <th class="px-4 py-3 text-left">Created By</th>
-                  <th class="px-4 py-3 text-left">BOL</th>
                 </tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-gray-500">No archived entries</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="9" class="text-center py-10 text-gray-500">No archived entries</td></tr>`}</tbody>
             </table>
           </div>
         </div>
