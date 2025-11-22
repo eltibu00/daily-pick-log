@@ -145,7 +145,9 @@
         client: '',
         shipTo: '',
         order: '',
+        poNumber: '',
         pallets: '',
+        cartonCount: '',
         carrier: '',
         pickupNum: '',
         scheduledDate: '',
@@ -470,7 +472,9 @@
           <td class="px-4 py-3 text-sm font-medium">${e.client||''}</td>
           <td class="px-4 py-3 text-sm">${e.shipTo||''}</td>
           <td class="px-4 py-3 text-sm">${e.order||''}</td>
+          <td class="px-4 py-3 text-sm">${e.poNumber||''}</td>
           <td class="px-4 py-3 text-sm text-center">${e.pallets||''}</td>
+          <td class="px-4 py-3 text-sm text-center">${e.cartonCount||''}</td>
           <td class="px-4 py-3 text-sm">${e.carrier||''}</td>
           <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
@@ -540,7 +544,9 @@
                   <th class="px-4 py-3 text-left">Client</th>
                   <th class="px-4 py-3 text-left">Ship To</th>
                   <th class="px-4 py-3 text-left">Order#</th>
+                  <th class="px-4 py-3 text-left">PO#</th>
                   <th class="px-4 py-3 text-left">Pallets</th>
+                  <th class="px-4 py-3 text-left">Cartons</th>
                   <th class="px-4 py-3 text-left">Carrier</th>
                   <th class="px-4 py-3 text-left">Pickup#</th>
                   <th class="px-4 py-3 text-left">Scheduled</th>
@@ -555,7 +561,7 @@
                   <th class="px-4 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="17" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="19" class="text-center py-10 text-gray-500">No entries</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -649,8 +655,16 @@
               <input class="w-full border rounded px-3 py-2" value="${f.order||''}" onchange="app.state.newForm.order=this.value">
             </div>
             <div>
+              <label class="text-sm block mb-1">PO#</label>
+              <input class="w-full border rounded px-3 py-2" value="${f.poNumber||''}" onchange="app.state.newForm.poNumber=this.value">
+            </div>
+            <div>
               <label class="text-sm block mb-1">Pallets</label>
               <input type="number" class="w-full border rounded px-3 py-2" value="${f.pallets||''}" onchange="app.state.newForm.pallets=this.value">
+            </div>
+            <div>
+              <label class="text-sm block mb-1">Carton Count</label>
+              <input type="number" class="w-full border rounded px-3 py-2" value="${f.cartonCount||''}" onchange="app.state.newForm.cartonCount=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Carrier <span class="text-red-500">*</span></label>
@@ -719,8 +733,16 @@
               <input class="w-full border rounded px-3 py-2" value="${e.order||''}" onchange="app.state.editing.order=this.value">
             </div>
             <div>
+              <label class="text-sm block mb-1">PO#</label>
+              <input class="w-full border rounded px-3 py-2" value="${e.poNumber||''}" onchange="app.state.editing.poNumber=this.value">
+            </div>
+            <div>
               <label class="text-sm block mb-1">Pallets</label>
               <input type="number" class="w-full border rounded px-3 py-2" value="${e.pallets||''}" onchange="app.state.editing.pallets=this.value">
+            </div>
+            <div>
+              <label class="text-sm block mb-1">Carton Count</label>
+              <input type="number" class="w-full border rounded px-3 py-2" value="${e.cartonCount||''}" onchange="app.state.editing.cartonCount=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Carrier</label>
