@@ -1114,6 +1114,12 @@
             if (CONFIG.user.role === 'clerk') {
                 await loadClerkQueue();
                 await loadClerkMetrics();
+
+                // Also refresh manager view if it's currently visible
+                const managerView = document.getElementById('managerView');
+                if (managerView && !managerView.classList.contains('hidden')) {
+                    await loadManagerData();
+                }
             } else {
                 await loadMyTickets();
             }
