@@ -250,10 +250,14 @@
     }
 
     async delete(id){
-      if(!confirm('Delete this entry?')) return;
-      await this.db.deleteEntryById(id);
-      await this.load();
-    }
+  if(!confirm('Delete this entry?')) return;
+  const res = await this.db.deleteEntryById(id);
+  if (res.success) {
+    await this.load();
+  } else {
+    alert('Delete failed: ' + (res.error || 'Unknown error'));
+  }
+}
 
     openEdit(id){
       const e = this.state.entries.find(x=>String(x.id)===String(id));
@@ -707,6 +711,7 @@
   </script>
 </body>
 </html>
+
 
 
 
