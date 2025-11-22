@@ -182,14 +182,18 @@
 
     formatDate(d){
       if (!d) return '';
+      let dt;
       if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
         const [yy, mm, dd] = d.split('-').map(Number);
-        const dt = new Date(yy, mm - 1, dd);
-        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        dt = new Date(yy, mm - 1, dd);
+      } else {
+        dt = new Date(d);
       }
-      const dt = new Date(d);
       if (isNaN(dt)) return d;
-      return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      return `${mm}-${dd}-${yyyy}`;
     }
 
     // Convert any date format to yyyy-MM-dd for HTML date inputs
@@ -427,8 +431,7 @@
             </div>
           </td>
           <td class="px-4 py-3 text-center">
-            <button class="text-indigo-600 mr-2" data-edit data-id="${e.id}">✏️</button>
-            <button class="text-red-600" data-del data-id="${e.id}">🗑️</button>
+            <button class="text-indigo-600" data-edit data-id="${e.id}">✏️</button>
           </td>
         </tr>
       `).join('');
