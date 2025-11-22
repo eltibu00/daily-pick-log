@@ -20,7 +20,9 @@
     SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwqA6hTkfj9ziHMUc6Cp1AHXw_9zrd5loFO0cilQngkmUs-0i08DmRt0sUp17cQIMb1/exec',
     SPREADSHEET_ID: '1lTFPGPptV5zEyXPVI3oosiop8GYzYNYvUezlIZZsPYk',
     SHEET_NAME: 'Sheet1',
-    AUTO_ARCHIVE_DAYS: 30
+    AUTO_ARCHIVE_DAYS: 30,
+    // Users who can delete entries (case-insensitive)
+    ADMINS: ['Roberto', 'Admin', 'Kafuti Lupasa', 'Norma Sandoval', 'Norma Hernandez']
   };
 
   // Client list for dropdown
@@ -113,7 +115,8 @@
       this.db = new GoogleSheetsDB(CONFIG);
       this.state = {
         userName: localStorage.getItem('pickupLogUser') || '',
-        showUserModal: !localStorage.getItem('pickupLogUser'),
+        userEmail: localStorage.getItem('pickupLogEmail') || '',
+        showUserModal: !localStorage.getItem('pickupLogUser') || !localStorage.getItem('pickupLogEmail'),
         entries: [],
         archivedEntries: [],
         search: '',
@@ -128,6 +131,11 @@
         updating: new Set() // Track which rows are being updated
       };
       this.init();
+    }
+
+    isAdmin(){
+      const user = this.state.userName.toLowerCase();
+      return CONFIG.ADMINS.some(admin => admin.toLowerCase() === user);
     }
 
     emptyForm(){
@@ -149,7 +157,9 @@
         comments: '',
         createdBy: this.state.userName,
         bolFile: '',
-        bolFileName: ''
+        bolFileName: '',
+        completedBy: '',
+        printedBy: ''
       };
     }
 
@@ -182,14 +192,27 @@
 
     formatDate(d){
       if (!d) return '';
+      let dt;
       if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
         const [yy, mm, dd] = d.split('-').map(Number);
-        const dt = new Date(yy, mm - 1, dd);
-        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        dt = new Date(yy, mm - 1, dd);
+      } else {
+        dt = new Date(d);
       }
-      const dt = new Date(d);
       if (isNaN(dt)) return d;
-      return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const yyyy = dt.getFullYear();
+      return `${mm}-${dd}-${yyyy}`;
+    }
+
+    // Convert any date format to yyyy-MM-dd for HTML date inputs
+    toInputDate(d){
+      if (!d) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+      const dt = new Date(d);
+      if (isNaN(dt)) return '';
+      return dt.toISOString().split('T')[0];
     }
 
     filtered(){
@@ -220,21 +243,27 @@
       if (this.state.updating.has(updateKey)) {
         return;
       }
-      
+
       this.state.updating.add(updateKey);
-      
+
       try {
         const i = this.state.entries.findIndex(e => String(e.id) === String(id));
         if (i < 0) return;
 
         const entry = { ...this.state.entries[i], [field]: value };
+        const now = new Date();
+        const timestamp = now.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
         if (field === 'pickupComplete') {
-          const n = new Date();
-          const y = n.getFullYear();
-          const m = String(n.getMonth() + 1).padStart(2, '0');
-          const d = String(n.getDate()).padStart(2, '0');
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, '0');
+          const d = String(now.getDate()).padStart(2, '0');
           entry.completedDate = value ? `${y}-${m}-${d}` : '';
+          entry.completedBy = value ? `${this.state.userName} (${timestamp})` : '';
+        }
+
+        if (field === 'printedByOps') {
+          entry.printedBy = value ? `${this.state.userName} (${timestamp})` : '';
         }
 
         // Update local state immediately for better UX
@@ -250,14 +279,14 @@
     }
 
     async delete(id){
-  if(!confirm('Delete this entry?')) return;
-  const res = await this.db.deleteEntryById(id);
-  if (res.success) {
-    await this.load();
-  } else {
-    alert('Delete failed: ' + (res.error || 'Unknown error'));
-  }
-}
+      if(!confirm('Delete this entry?')) return;
+      const res = await this.db.deleteEntryById(id);
+      if (res.success) {
+        await this.load();
+      } else {
+        alert('Delete failed: ' + (res.error || 'Unknown error'));
+      }
+    }
 
     openEdit(id){
       const e = this.state.entries.find(x=>String(x.id)===String(id));
@@ -281,12 +310,30 @@
       await this.load();
     }
 
-    setUser(name){
-      if(!name) return;
+    setUser(name, email){
+      if(!name || !email) {
+        alert('Please enter both name and email.');
+        return;
+      }
+      if(!email.toLowerCase().endsWith('@staciamericas.com')) {
+        alert('Email must be a @staciamericas.com address.');
+        return;
+      }
       localStorage.setItem('pickupLogUser', name);
+      localStorage.setItem('pickupLogEmail', email.toLowerCase());
       this.state.userName = name;
+      this.state.userEmail = email.toLowerCase();
       this.state.showUserModal = false;
       this.init();
+    }
+
+    logout(){
+      localStorage.removeItem('pickupLogUser');
+      localStorage.removeItem('pickupLogEmail');
+      this.state.userName = '';
+      this.state.userEmail = '';
+      this.state.showUserModal = true;
+      this.render();
     }
 
     async handleBOLUpload(id, fileInput) {
@@ -380,12 +427,16 @@
           <div class="min-h-screen flex items-center justify-center">
             <div class="bg-white p-6 rounded-lg shadow max-w-sm w-full">
               <h2 class="text-2xl font-bold mb-2 text-indigo-900">Welcome</h2>
-              <p class="text-gray-600 mb-4">Enter your name to continue.</p>
-              <input id="uname" class="w-full border rounded px-3 py-2 mb-3" placeholder="Your name">
-              <button id="ustart" class="w-full bg-indigo-600 text-white rounded px-3 py-2">Continue</button>
+              <p class="text-gray-600 mb-4">Sign in with your Staci Americas credentials.</p>
+              <input id="uname" class="w-full border rounded px-3 py-2 mb-3" placeholder="Full Name">
+              <input id="uemail" type="email" class="w-full border rounded px-3 py-2 mb-3" placeholder="Email (@staciamericas.com)">
+              <button id="ustart" class="w-full bg-indigo-600 text-white rounded px-3 py-2">Sign In</button>
             </div>
           </div>`;
-        document.getElementById('ustart').onclick = () => this.setUser(document.getElementById('uname').value.trim());
+        document.getElementById('ustart').onclick = () => this.setUser(
+          document.getElementById('uname').value.trim(),
+          document.getElementById('uemail').value.trim()
+        );
         return;
       }
 
@@ -405,8 +456,8 @@
           <td class="px-4 py-3 text-sm">${e.pickupNum||''}</td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.scheduledDate)}</td>
           <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="bolProvided" ${e.bolProvided?'checked':''} ${this.state.updating.has(`${e.id}-bolProvided`)?'disabled':''}></td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="printedByOps" ${e.printedByOps?'checked':''} ${this.state.updating.has(`${e.id}-printedByOps`)?'disabled':''}></td>
-          <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="pickupComplete" ${e.pickupComplete?'checked':''} ${this.state.updating.has(`${e.id}-pickupComplete`)?'disabled':''}></td>
+          <td class="px-4 py-3 text-center" title="${e.printedBy || 'Not printed yet'}"><input type="checkbox" class="w-5 h-5" data-field="printedByOps" ${e.printedByOps?'checked':''} ${this.state.updating.has(`${e.id}-printedByOps`)?'disabled':''}></td>
+          <td class="px-4 py-3 text-center" title="${e.completedBy || 'Not completed yet'}"><input type="checkbox" class="w-5 h-5" data-field="pickupComplete" ${e.pickupComplete?'checked':''} ${this.state.updating.has(`${e.id}-pickupComplete`)?'disabled':''}></td>
           <td class="px-4 py-3 text-sm">${this.formatDate(e.completedDate)}</td>
           <td class="px-4 py-3 text-center"><input type="checkbox" class="w-5 h-5" data-field="qualityCheck" ${e.qualityCheck?'checked':''} ${this.state.updating.has(`${e.id}-qualityCheck`)?'disabled':''}></td>
           <td class="px-4 py-3 text-sm max-w-xs truncate" title="${e.comments||''}">${e.comments||''}</td>
@@ -418,8 +469,8 @@
             </div>
           </td>
           <td class="px-4 py-3 text-center">
-            <button class="text-indigo-600 mr-2" data-edit data-id="${e.id}">✏️</button>
-            <button class="text-red-600" data-del data-id="${e.id}">🗑️</button>
+            <button class="text-indigo-600 ${this.isAdmin() ? 'mr-2' : ''}" data-edit data-id="${e.id}">✏️</button>
+            ${this.isAdmin() ? `<button class="text-red-600" data-del data-id="${e.id}">🗑️</button>` : ''}
           </td>
         </tr>
       `).join('');
@@ -430,7 +481,7 @@
             <div>
               <h1 class="text-3xl font-bold text-indigo-900 mb-1">Daily Pick Up Log</h1>
               <p class="text-gray-600">Transportation & Customer Service Operations</p>
-              <p class="text-sm text-gray-500">Logged in as: <span class="text-indigo-600 font-semibold">${this.state.userName}</span></p>
+              <p class="text-sm text-gray-500">Logged in as: <span class="text-indigo-600 font-semibold">${this.state.userName}</span> (${this.state.userEmail}) <button onclick="app.logout()" class="text-red-500 underline ml-2">Logout</button></p>
               ${this.state.bolFolderUrl ? `<p class="text-xs text-gray-500 mt-1">📁 <a href="${this.state.bolFolderUrl}" target="_blank" class="text-blue-600 underline">View BOL Files Folder</a></p>` : ''}
             </div>
             <div class="flex gap-2">
@@ -562,7 +613,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-sm block mb-1">Date</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${f.date||''}" onchange="app.state.newForm.date=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.date)}" onchange="app.state.newForm.date=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Client</label>
@@ -596,7 +647,7 @@
             </div>
             <div>
               <label class="text-sm block mb-1">Scheduled</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${f.scheduledDate||''}" onchange="app.state.newForm.scheduledDate=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(f.scheduledDate)}" onchange="app.state.newForm.scheduledDate=this.value">
             </div>
             <div class="col-span-2">
               <label class="text-sm block mb-1">Created By: <strong>${this.state.userName}</strong></label>
@@ -632,7 +683,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-sm block mb-1">Date</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${e.date||''}" onchange="app.state.editing.date=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(e.date)}" onchange="app.state.editing.date=this.value">
             </div>
             <div>
               <label class="text-sm block mb-1">Client</label>
@@ -666,7 +717,7 @@
             </div>
             <div>
               <label class="text-sm block mb-1">Scheduled</label>
-              <input type="date" class="w-full border rounded px-3 py-2" value="${e.scheduledDate||''}" onchange="app.state.editing.scheduledDate=this.value">
+              <input type="date" class="w-full border rounded px-3 py-2" value="${this.toInputDate(e.scheduledDate)}" onchange="app.state.editing.scheduledDate=this.value">
             </div>
             <div class="col-span-2">
               <label class="text-sm text-gray-600">Created by: <strong>${e.createdBy||'Unknown'}</strong></label>
