@@ -1053,13 +1053,17 @@
                 // Get config data
                 const configResponse = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getConfig`);
                 const configData = await configResponse.json();
+                console.log('Config data loaded:', configData);
 
                 // Populate client dropdowns
                 const clientSelects = [document.getElementById('client'), document.getElementById('reportClient')];
+                const clients = configData.clients || [];
+                console.log('Clients loaded:', clients.length, clients);
+
                 clientSelects.forEach(select => {
                     if (select) {
                         select.innerHTML = '<option value="">Select client...</option>';
-                        (configData.clients || []).forEach(client => {
+                        clients.forEach(client => {
                             const option = document.createElement('option');
                             option.value = client;
                             option.textContent = client;
@@ -1083,7 +1087,13 @@
                 // Get drivers separately
                 const driversResponse = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getDrivers`);
                 const driversData = await driversResponse.json();
+                console.log('Drivers API response:', driversData);
                 drivers = (driversData || []).map(d => d.name);
+                console.log('Drivers loaded:', drivers.length, drivers);
+
+                if (drivers.length === 0) {
+                    console.warn('⚠️ No active drivers found. Make sure Drivers sheet has TRUE in Active column.');
+                }
             } catch (error) {
                 console.error('Error loading config:', error);
             }
@@ -1144,8 +1154,20 @@
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getRequestorTickets&requestorEmail=${encodeURIComponent(CONFIG.user.email)}`);
                 const data = await response.json();
 
+                // Debug: Log the raw response
+                console.log('=== getRequestorTickets Response ===');
+                console.log('Raw data:', data);
+                console.log('activeTickets:', data.activeTickets?.length || 0, data.activeTickets);
+                console.log('resolvedTickets:', data.resolvedTickets?.length || 0, data.resolvedTickets);
+
                 // GS returns {activeTickets: [], resolvedTickets: []}
                 const allTickets = [...(data.activeTickets || []), ...(data.resolvedTickets || [])];
+
+                // Debug: Log ticket fields to check client
+                if (allTickets.length > 0) {
+                    console.log('Sample ticket fields:', Object.keys(allTickets[0]));
+                    console.log('First ticket client value:', allTickets[0].client);
+                }
 
                 if (allTickets.length > 0) {
                     container.innerHTML = allTickets.map(ticket => createRequestorTicketCard(ticket)).join('');
@@ -1216,6 +1238,15 @@
                 const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=getClerkQueue`);
                 const data = await response.json();
 
+                // Debug: Log the raw response to see what GS is returning
+                console.log('=== getClerkQueue Response ===');
+                console.log('Raw data:', data);
+                console.log('newTickets:', data.newTickets?.length || 0, data.newTickets);
+                console.log('acknowledgedTickets:', data.acknowledgedTickets?.length || 0, data.acknowledgedTickets);
+                console.log('assignedTickets:', data.assignedTickets?.length || 0, data.assignedTickets);
+                console.log('inProgressTickets:', data.inProgressTickets?.length || 0, data.inProgressTickets);
+                console.log('completeTickets:', data.completeTickets?.length || 0, data.completeTickets);
+
                 // GS returns separate arrays: newTickets, acknowledgedTickets, assignedTickets, inProgressTickets, completeTickets
                 allTickets = [
                     ...(data.newTickets || []),
@@ -1224,7 +1255,9 @@
                     ...(data.inProgressTickets || []),
                     ...(data.completeTickets || [])
                 ];
-                console.log('Loaded tickets:', allTickets.length, allTickets); // Debug log
+                console.log('Total tickets combined:', allTickets.length);
+                console.log('Ticket statuses:', allTickets.map(t => `${t.ticketID}: ${t.status}`));
+
                 updateTabCounts();
                 renderTicketQueue();
             } catch (error) {
