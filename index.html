@@ -489,7 +489,7 @@
               <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="app.state.showAdd=true; app.state.newForm=app.emptyForm(); app.render()">➕ Add</button>
               <button class="bg-indigo-600 text-white px-4 py-2 rounded" onclick="app.archive()">📁 Archive Now</button>
               <button class="bg-purple-600 text-white px-4 py-2 rounded" onclick="app.loadArchive()">📂 View Archive</button>
-              <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Sheet</button>
+              ${this.isAdmin() ? `<button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="window.open('https://docs.google.com/spreadsheets/d/${CONFIG.SPREADSHEET_ID}','_blank')">📄 Sheet</button>` : ''}
             </div>
           </div>
 
