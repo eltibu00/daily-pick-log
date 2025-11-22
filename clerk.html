@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clerk Dashboard - Inventory Control</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 1s linear infinite; }
+    .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .gradient-card { background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%); }
+    .urgent-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .tab-active { background: white; color: #667eea; box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3); }
+    .metric-good { color: #10b981; }
+    .metric-warning { color: #f59e0b; }
+    .metric-bad { color: #ef4444; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="app"></div>
+
+  <script>
+  const CONFIG = {
+    SCRIPT_URL: 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE',
+    REFRESH_INTERVAL: 30000
+  };
+
+  // ================== API Client ==================
+  class ClerkAPI {
+    constructor(url) {
+      this.url = url;
+    }
+
+    async post(action, data = {}) {
+      const r = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action, ...data })
+      });
+      return r.json();
+    }
+
+    async get(action, params = {}) {
+      const url = new URL(this.url);
+      url.searchParams.set('action', action);
+      Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+      const r = await fetch(url);
+      return r.json();
+    }
+
+    verifyPassword(password) { return this.post('verifyClerkPassword', { password }); }
+    getClerkQueue() { return this.get('getClerkQueue'); }
+    acknowledgeTicket(ticketID, clerkName) { return this.post('acknowledgeTicket', { ticketID, clerkName }); }
+    assignTicket(ticketID, driverName) { return this.post('assignTicket', { ticketID, driverName }); }
+    markInProgress(ticketID) { return this.post('markInProgress', { ticketID }); }
+    markComplete(ticketID) { return this.post('markComplete', { ticketID }); }
+    closeTicket(ticketID, clerkName) { return this.post('closeTicket', { ticketID, clerkName }); }
+    getClerkMetrics() { return this.get('getClerkMetrics'); }
+    getClientTimeReport(client, startDate, endDate) { return this.get('getClientTimeReport', { client, startDate, endDate }); }
+    getDrivers() { return this.get('getDrivers'); }
+    getConfig() { return this.get('getConfig'); }
+  }
+
+  // ================== Main App ==================
+  class ClerkDashboard {
+    constructor() {
+      this.api = new ClerkAPI(CONFIG.SCRIPT_URL);
+      this.state = {
+        authenticated: false,
+        clerkName: localStorage.getItem('clerkName') || '',
+        clerkEmail: localStorage.getItem('clerkEmail') || '',
+        showLogin: true,
+        activeTab: 'all',
+        tickets: [],
+        drivers: [],
+        config: { clients: [], departments: [], requestTypes: [] },
+        metrics: null,
+        managerMetrics: null,
+        clientReport: null,
+        reportClient: '',
+        reportStartDate: '',
+        reportEndDate: '',
+        loading: false,
+        showManager: false,
+        showReport: false
+      };
+
+      // Check if already logged in
+      if (this.state.clerkName && this.state.clerkEmail) {
+        this.state.authenticated = true;
+        this.state.showLogin = false;
+        this.init();
+      }
+
+      this.render();
+    }
+
+    async init() {
+      this.state.loading = true;
+      this.render();
+
+      try {
+        const [queue, drivers, config, metrics] = await Promise.all([
+          this.api.getClerkQueue(),
+          this.api.getDrivers(),
+          this.api.getConfig(),
+          this.api.getClerkMetrics()
+        ]);
+
+        this.state.tickets = queue.data || [];
+        this.state.drivers = drivers.data || [];
+        this.state.config = config.data || { clients: [], departments: [], requestTypes: [] };
+        this.state.metrics = metrics.data || null;
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+
+      this.state.loading = false;
+      this.render();
+
+      // Auto-refresh
+      setInterval(() => this.refresh(), CONFIG.REFRESH_INTERVAL);
+    }
+
+    async refresh() {
+      try {
+        const [queue, metrics] = await Promise.all([
+          this.api.getClerkQueue(),
+          this.api.getClerkMetrics()
+        ]);
+        this.state.tickets = queue.data || [];
+        this.state.metrics = metrics.data || null;
+        this.render();
+      } catch (err) {
+        console.error('Refresh error:', err);
+      }
+    }
+
+    async verifyLogin(password, name, email) {
+      if (!name.trim() || !email.trim()) {
+        alert('Please enter your name and email.');
+        return;
+      }
+      if (!email.toLowerCase().endsWith('@staciamericas.com')) {
+        alert('Email must be a @staciamericas.com address.');
+        return;
+      }
+      if (!password.trim()) {
+        alert('Please enter the clerk password.');
+        return;
+      }
+
+      this.state.loading = true;
+      this.render();
+
+      try {
+        const result = await this.api.verifyPassword(password);
+        if (result.success) {
+          this.state.authenticated = true;
+          this.state.showLogin = false;
+          this.state.clerkName = name.trim();
+          this.state.clerkEmail = email.toLowerCase().trim();
+          localStorage.setItem('clerkName', this.state.clerkName);
+          localStorage.setItem('clerkEmail', this.state.clerkEmail);
+          await this.init();
+        } else {
+          alert('Invalid password. Please try again.');
+        }
+      } catch (err) {
+        alert('Login failed: ' + err.message);
+      }
+
+      this.state.loading = false;
+      this.render();
+    }
+
+    logout() {
+      localStorage.removeItem('clerkName');
+      localStorage.removeItem('clerkEmail');
+      this.state.authenticated = false;
+      this.state.showLogin = true;
+      this.state.clerkName = '';
+      this.state.clerkEmail = '';
+      this.render();
+    }
+
+    getFilteredTickets() {
+      let tickets = [...this.state.tickets];
+
+      // Filter by tab
+      if (this.state.activeTab !== 'all') {
+        const typeMap = {
+          'replenishment': 'Replenishment',
+          'cyclecount': 'Cycle Count',
+          'supplies': 'Supplies Needed',
+          'other': 'Other'
+        };
+        tickets = tickets.filter(t => t.requestType === typeMap[this.state.activeTab]);
+      }
+
+      // Sort: Urgent first, then FIFO
+      tickets.sort((a, b) => {
+        if (a.urgent && !b.urgent) return -1;
+        if (!a.urgent && b.urgent) return 1;
+        return new Date(a.createdAt) - new Date(b.createdAt);
+      });
+
+      return tickets;
+    }
+
+    getTabCounts() {
+      const counts = {
+        all: { total: 0, urgent: 0 },
+        replenishment: { total: 0, urgent: 0 },
+        cyclecount: { total: 0, urgent: 0 },
+        supplies: { total: 0, urgent: 0 },
+        other: { total: 0, urgent: 0 }
+      };
+
+      this.state.tickets.forEach(t => {
+        counts.all.total++;
+        if (t.urgent) counts.all.urgent++;
+
+        const typeMap = {
+          'Replenishment': 'replenishment',
+          'Cycle Count': 'cyclecount',
+          'Supplies Needed': 'supplies',
+          'Other': 'other'
+        };
+        const key = typeMap[t.requestType] || 'other';
+        counts[key].total++;
+        if (t.urgent) counts[key].urgent++;
+      });
+
+      return counts;
+    }
+
+    async acknowledgeTicket(ticketID) {
+      try {
+        await this.api.acknowledgeTicket(ticketID, this.state.clerkName);
+        await this.refresh();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async assignTicket(ticketID, driverName) {
+      if (!driverName) {
+        alert('Please select a driver.');
+        return;
+      }
+      try {
+        await this.api.assignTicket(ticketID, driverName);
+        await this.refresh();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async markInProgress(ticketID) {
+      try {
+        await this.api.markInProgress(ticketID);
+        await this.refresh();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async markComplete(ticketID) {
+      try {
+        await this.api.markComplete(ticketID);
+        await this.refresh();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async closeTicket(ticketID) {
+      try {
+        await this.api.closeTicket(ticketID, this.state.clerkName);
+        await this.refresh();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    async loadClientReport() {
+      if (!this.state.reportClient || !this.state.reportStartDate || !this.state.reportEndDate) {
+        alert('Please select a client and date range.');
+        return;
+      }
+
+      this.state.loading = true;
+      this.render();
+
+      try {
+        const result = await this.api.getClientTimeReport(
+          this.state.reportClient,
+          this.state.reportStartDate,
+          this.state.reportEndDate
+        );
+        this.state.clientReport = result.data || null;
+      } catch (err) {
+        alert('Error loading report: ' + err.message);
+      }
+
+      this.state.loading = false;
+      this.render();
+    }
+
+    formatTime(minutes) {
+      if (minutes === null || minutes === undefined) return '-';
+      if (minutes < 60) return `${Math.round(minutes)} min`;
+      const hours = Math.floor(minutes / 60);
+      const mins = Math.round(minutes % 60);
+      return `${hours}h ${mins}m`;
+    }
+
+    getMetricClass(value, target) {
+      if (value === null || value === undefined) return '';
+      if (value <= target) return 'metric-good';
+      if (value <= target * 1.5) return 'metric-warning';
+      return 'metric-bad';
+    }
+
+    formatDate(d) {
+      if (!d) return '-';
+      const dt = new Date(d);
+      if (isNaN(dt)) return d;
+      return dt.toLocaleString();
+    }
+
+    render() {
+      const el = document.getElementById('app');
+
+      if (this.state.showLogin) {
+        el.innerHTML = this.renderLogin();
+        this.bindLoginEvents();
+        return;
+      }
+
+      if (this.state.showManager) {
+        el.innerHTML = this.renderManager();
+        return;
+      }
+
+      if (this.state.showReport) {
+        el.innerHTML = this.renderReport();
+        this.bindReportEvents();
+        return;
+      }
+
+      el.innerHTML = this.renderDashboard();
+      this.bindDashboardEvents();
+    }
+
+    renderLogin() {
+      return `
+        <div class="min-h-screen gradient-bg flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+            <div class="text-center mb-8">
+              <div class="text-6xl mb-4">🎫</div>
+              <h1 class="text-3xl font-bold text-gray-800">Clerk Dashboard</h1>
+              <p class="text-gray-500 mt-2">Inventory Control System</p>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input id="loginName" type="text" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Enter your full name">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input id="loginEmail" type="email" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="your.name@staciamericas.com">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Clerk Password</label>
+                <input id="loginPassword" type="password" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Enter clerk password">
+              </div>
+              <button id="loginBtn" class="w-full gradient-bg text-white font-semibold py-3 rounded-lg hover:opacity-90 transition-opacity">
+                ${this.state.loading ? '<span class="spinner inline-block w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span>' : 'Sign In'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    renderDashboard() {
+      const counts = this.getTabCounts();
+      const tickets = this.getFilteredTickets();
+
+      return `
+        <div class="min-h-screen bg-gray-100">
+          <!-- Header -->
+          <div class="gradient-bg text-white p-6 shadow-lg">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+              <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                  🎫 Clerk Dashboard
+                </h1>
+                <p class="text-purple-200 text-sm">
+                  Logged in as: <strong>${this.state.clerkName}</strong> (${this.state.clerkEmail})
+                </p>
+              </div>
+              <div class="flex gap-3">
+                <button onclick="app.state.showManager=true; app.render()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                  📊 Manager View
+                </button>
+                <button onclick="app.state.showReport=true; app.render()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                  📈 Reports
+                </button>
+                <button onclick="app.refresh()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                  🔄 Refresh
+                </button>
+                <button onclick="app.logout()" class="bg-red-500/80 hover:bg-red-500 px-4 py-2 rounded-lg transition-colors">
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Metrics Bar -->
+          ${this.renderMetricsBar()}
+
+          <!-- Tab Navigation -->
+          <div class="max-w-7xl mx-auto px-6 mt-6">
+            <div class="flex gap-2 bg-purple-100 p-2 rounded-xl">
+              ${this.renderTab('all', '🔥 All', counts.all)}
+              ${this.renderTab('replenishment', '📦 Replenishment', counts.replenishment)}
+              ${this.renderTab('cyclecount', '📊 Cycle Count', counts.cyclecount)}
+              ${this.renderTab('supplies', '🔧 Supplies', counts.supplies)}
+              ${this.renderTab('other', '❓ Other', counts.other)}
+            </div>
+          </div>
+
+          <!-- Tickets Grid -->
+          <div class="max-w-7xl mx-auto px-6 py-6">
+            ${this.state.loading ? `
+              <div class="text-center py-20">
+                <div class="spinner inline-block w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full"></div>
+                <p class="text-gray-500 mt-4">Loading tickets...</p>
+              </div>
+            ` : tickets.length === 0 ? `
+              <div class="text-center py-20 bg-white rounded-xl shadow">
+                <div class="text-6xl mb-4">✨</div>
+                <h3 class="text-xl font-semibold text-gray-700">No tickets in this queue</h3>
+                <p class="text-gray-500">Great job! Check back soon for new requests.</p>
+              </div>
+            ` : `
+              <div class="grid gap-4">
+                ${tickets.map(t => this.renderTicketCard(t)).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    renderMetricsBar() {
+      const m = this.state.metrics;
+      if (!m) return '';
+
+      return `
+        <div class="max-w-7xl mx-auto px-6 mt-6">
+          <div class="bg-white rounded-xl shadow p-4">
+            <h3 class="text-sm font-semibold text-gray-500 mb-3">⏱️ YOUR EFFICIENCY METRICS</h3>
+            <div class="grid grid-cols-4 gap-4">
+              <div class="text-center">
+                <p class="text-xs text-gray-500">Time to Acknowledge</p>
+                <p class="text-2xl font-bold ${this.getMetricClass(m.avgAcknowledge, 5)}">${this.formatTime(m.avgAcknowledge)}</p>
+                <p class="text-xs text-gray-400">Target: &lt;5 min</p>
+              </div>
+              <div class="text-center">
+                <p class="text-xs text-gray-500">Time to Assign</p>
+                <p class="text-2xl font-bold ${this.getMetricClass(m.avgAssign, 10)}">${this.formatTime(m.avgAssign)}</p>
+                <p class="text-xs text-gray-400">Target: &lt;10 min</p>
+              </div>
+              <div class="text-center">
+                <p class="text-xs text-gray-500">Time to In Progress</p>
+                <p class="text-2xl font-bold ${this.getMetricClass(m.avgInProgress, 15)}">${this.formatTime(m.avgInProgress)}</p>
+                <p class="text-xs text-gray-400">Target: &lt;15 min</p>
+              </div>
+              <div class="text-center">
+                <p class="text-xs text-gray-500">Total Processing</p>
+                <p class="text-2xl font-bold ${this.getMetricClass(m.avgTotal, 30)}">${this.formatTime(m.avgTotal)}</p>
+                <p class="text-xs text-gray-400">Target: &lt;30 min</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    renderTab(key, label, counts) {
+      const isActive = this.state.activeTab === key;
+      return `
+        <button onclick="app.state.activeTab='${key}'; app.render()"
+          class="flex-1 py-3 px-4 rounded-lg font-medium transition-all ${isActive ? 'tab-active' : 'text-purple-700 hover:bg-white/50'}">
+          ${label}
+          <span class="ml-2 bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full text-sm">${counts.total}</span>
+          ${counts.urgent > 0 ? `<span class="ml-1 urgent-pulse text-red-500">⚠️ ${counts.urgent}</span>` : ''}
+        </button>
+      `;
+    }
+
+    renderTicketCard(t) {
+      const statusColors = {
+        'New': 'bg-blue-100 text-blue-800',
+        'Acknowledged': 'bg-yellow-100 text-yellow-800',
+        'Assigned': 'bg-orange-100 text-orange-800',
+        'In Progress': 'bg-purple-100 text-purple-800',
+        'Completed': 'bg-green-100 text-green-800',
+        'Closed': 'bg-gray-100 text-gray-800'
+      };
+
+      return `
+        <div class="bg-white rounded-xl shadow-md p-5 ${t.urgent ? 'border-l-4 border-red-500' : ''}" data-ticket-id="${t.id}">
+          <div class="flex justify-between items-start mb-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-lg font-bold text-gray-800">#${t.id}</span>
+                ${t.urgent ? '<span class="urgent-pulse bg-red-500 text-white text-xs px-2 py-1 rounded-full">🔥 URGENT</span>' : ''}
+                <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[t.status] || 'bg-gray-100'}">${t.status}</span>
+              </div>
+              <p class="text-gray-600 mt-1">${t.requestType}</p>
+            </div>
+            <div class="text-right text-sm text-gray-500">
+              <p>${this.formatDate(t.createdAt)}</p>
+              <p class="font-medium">${t.client || '-'}</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 mb-4 text-sm">
+            <div>
+              <p class="text-gray-500">Location</p>
+              <p class="font-medium">${t.location || '-'}</p>
+            </div>
+            <div>
+              <p class="text-gray-500">Department</p>
+              <p class="font-medium">${t.department || '-'}</p>
+            </div>
+            <div>
+              <p class="text-gray-500">Requested By</p>
+              <p class="font-medium">${t.requestedBy || '-'}</p>
+            </div>
+          </div>
+
+          ${t.description ? `
+            <div class="bg-gray-50 rounded-lg p-3 mb-4">
+              <p class="text-sm text-gray-700">${t.description}</p>
+            </div>
+          ` : ''}
+
+          ${t.assignedDriver ? `
+            <div class="mb-4 text-sm">
+              <span class="text-gray-500">Assigned to:</span>
+              <span class="font-medium text-purple-700">${t.assignedDriver}</span>
+            </div>
+          ` : ''}
+
+          <!-- Action Buttons -->
+          <div class="flex gap-2 flex-wrap">
+            ${this.renderTicketActions(t)}
+          </div>
+        </div>
+      `;
+    }
+
+    renderTicketActions(t) {
+      const buttons = [];
+
+      if (t.status === 'New') {
+        buttons.push(`
+          <button onclick="app.acknowledgeTicket('${t.id}')" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            ✓ Acknowledge
+          </button>
+        `);
+      }
+
+      if (t.status === 'Acknowledged') {
+        buttons.push(`
+          <div class="flex gap-2 items-center">
+            <select id="driver-${t.id}" class="border rounded-lg px-3 py-2 text-sm">
+              <option value="">Select Driver...</option>
+              ${this.state.drivers.map(d => `<option value="${d}">${d}</option>`).join('')}
+            </select>
+            <button onclick="app.assignTicket('${t.id}', document.getElementById('driver-${t.id}').value)" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+              🚗 Assign
+            </button>
+          </div>
+        `);
+      }
+
+      if (t.status === 'Assigned') {
+        buttons.push(`
+          <button onclick="app.markInProgress('${t.id}')" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            ▶️ Mark In Progress
+          </button>
+        `);
+      }
+
+      if (t.status === 'In Progress') {
+        buttons.push(`
+          <button onclick="app.markComplete('${t.id}')" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            ✅ Mark Complete
+          </button>
+        `);
+      }
+
+      if (t.status === 'Completed') {
+        buttons.push(`
+          <button onclick="app.closeTicket('${t.id}')" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            📁 Close Ticket
+          </button>
+        `);
+      }
+
+      return buttons.join('');
+    }
+
+    renderManager() {
+      const m = this.state.metrics;
+
+      return `
+        <div class="min-h-screen bg-gray-100">
+          <!-- Header -->
+          <div class="gradient-bg text-white p-6 shadow-lg">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+              <div>
+                <h1 class="text-2xl font-bold">📊 Manager Dashboard</h1>
+                <p class="text-purple-200 text-sm">Performance Overview & Analytics</p>
+              </div>
+              <button onclick="app.state.showManager=false; app.render()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                ← Back to Queue
+              </button>
+            </div>
+          </div>
+
+          <div class="max-w-7xl mx-auto px-6 py-6">
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-4 gap-4 mb-6">
+              <div class="bg-white rounded-xl shadow p-5">
+                <p class="text-gray-500 text-sm">Active Tickets</p>
+                <p class="text-3xl font-bold text-purple-600">${m?.activeTickets || 0}</p>
+              </div>
+              <div class="bg-white rounded-xl shadow p-5">
+                <p class="text-gray-500 text-sm">Resolved Today</p>
+                <p class="text-3xl font-bold text-green-600">${m?.resolvedToday || 0}</p>
+              </div>
+              <div class="bg-white rounded-xl shadow p-5">
+                <p class="text-gray-500 text-sm">Urgent Pending</p>
+                <p class="text-3xl font-bold text-red-600">${m?.urgentPending || 0}</p>
+              </div>
+              <div class="bg-white rounded-xl shadow p-5">
+                <p class="text-gray-500 text-sm">Avg Resolution Time</p>
+                <p class="text-3xl font-bold text-blue-600">${this.formatTime(m?.avgResolution)}</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-6 mb-6">
+              <!-- By Request Type -->
+              <div class="bg-white rounded-xl shadow p-5">
+                <h3 class="font-semibold text-gray-800 mb-4">📦 By Request Type</h3>
+                <div class="space-y-3">
+                  ${(m?.byRequestType || []).map(r => `
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-600">${r.type}</span>
+                      <div class="flex items-center gap-2">
+                        <div class="w-32 bg-gray-200 rounded-full h-2">
+                          <div class="bg-purple-500 h-2 rounded-full" style="width: ${r.percentage}%"></div>
+                        </div>
+                        <span class="font-semibold w-10 text-right">${r.count}</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- By Client -->
+              <div class="bg-white rounded-xl shadow p-5">
+                <h3 class="font-semibold text-gray-800 mb-4">🏢 By Client</h3>
+                <div class="space-y-3">
+                  ${(m?.byClient || []).map(c => `
+                    <div class="flex justify-between items-center">
+                      <span class="text-gray-600">${c.client}</span>
+                      <div class="flex items-center gap-2">
+                        <div class="w-32 bg-gray-200 rounded-full h-2">
+                          <div class="bg-blue-500 h-2 rounded-full" style="width: ${c.percentage}%"></div>
+                        </div>
+                        <span class="font-semibold w-10 text-right">${c.count}</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+
+            <!-- Clerk Performance Table -->
+            <div class="bg-white rounded-xl shadow p-5 mb-6">
+              <h3 class="font-semibold text-gray-800 mb-4">👥 Clerk Performance</h3>
+              <table class="w-full">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="text-left py-3 px-4 text-sm font-semibold text-gray-600">Clerk</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Tickets Handled</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Avg Acknowledge</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Avg Assign</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Avg Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(m?.clerkPerformance || []).map(c => `
+                    <tr class="border-t">
+                      <td class="py-3 px-4 font-medium">${c.name}</td>
+                      <td class="py-3 px-4 text-center">${c.ticketsHandled}</td>
+                      <td class="py-3 px-4 text-center ${this.getMetricClass(c.avgAcknowledge, 5)}">${this.formatTime(c.avgAcknowledge)}</td>
+                      <td class="py-3 px-4 text-center ${this.getMetricClass(c.avgAssign, 10)}">${this.formatTime(c.avgAssign)}</td>
+                      <td class="py-3 px-4 text-center ${this.getMetricClass(c.avgTotal, 30)}">${this.formatTime(c.avgTotal)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Board Overview -->
+            <div class="bg-white rounded-xl shadow p-5">
+              <h3 class="font-semibold text-gray-800 mb-4">📋 Board Overview</h3>
+              <div class="grid grid-cols-6 gap-4">
+                ${['New', 'Acknowledged', 'Assigned', 'In Progress', 'Completed', 'Closed'].map(status => {
+                  const count = this.state.tickets.filter(t => t.status === status).length;
+                  return `
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                      <p class="text-2xl font-bold text-gray-800">${count}</p>
+                      <p class="text-xs text-gray-500">${status}</p>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    renderReport() {
+      return `
+        <div class="min-h-screen bg-gray-100">
+          <!-- Header -->
+          <div class="gradient-bg text-white p-6 shadow-lg">
+            <div class="max-w-7xl mx-auto flex justify-between items-center">
+              <div>
+                <h1 class="text-2xl font-bold">📈 Client Time Analysis Report</h1>
+                <p class="text-purple-200 text-sm">Detailed performance metrics by client</p>
+              </div>
+              <button onclick="app.state.showReport=false; app.state.clientReport=null; app.render()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition-colors">
+                ← Back to Queue
+              </button>
+            </div>
+          </div>
+
+          <div class="max-w-7xl mx-auto px-6 py-6">
+            <!-- Filters -->
+            <div class="bg-white rounded-xl shadow p-5 mb-6">
+              <h3 class="font-semibold text-gray-800 mb-4">🔍 Report Parameters</h3>
+              <div class="grid grid-cols-4 gap-4">
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">Client</label>
+                  <select id="reportClient" class="w-full border rounded-lg px-3 py-2">
+                    <option value="">Select Client...</option>
+                    ${(this.state.config.clients || []).map(c => `
+                      <option value="${c}" ${this.state.reportClient === c ? 'selected' : ''}>${c}</option>
+                    `).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">Start Date</label>
+                  <input type="date" id="reportStartDate" value="${this.state.reportStartDate}" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div>
+                  <label class="block text-sm text-gray-600 mb-1">End Date</label>
+                  <input type="date" id="reportEndDate" value="${this.state.reportEndDate}" class="w-full border rounded-lg px-3 py-2">
+                </div>
+                <div class="flex items-end">
+                  <button id="generateReport" class="w-full gradient-bg text-white px-4 py-2 rounded-lg font-medium hover:opacity-90 transition-opacity">
+                    ${this.state.loading ? 'Loading...' : 'Generate Report'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            ${this.state.clientReport ? this.renderClientReportData() : `
+              <div class="bg-white rounded-xl shadow p-10 text-center">
+                <div class="text-6xl mb-4">📊</div>
+                <h3 class="text-xl font-semibold text-gray-700">Select parameters to generate report</h3>
+                <p class="text-gray-500">Choose a client and date range above</p>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    renderClientReportData() {
+      const r = this.state.clientReport;
+      return `
+        <div class="space-y-6">
+          <!-- Summary Cards -->
+          <div class="grid grid-cols-4 gap-4">
+            <div class="bg-white rounded-xl shadow p-5">
+              <p class="text-gray-500 text-sm">Total Tickets</p>
+              <p class="text-3xl font-bold text-purple-600">${r.totalTickets || 0}</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-5">
+              <p class="text-gray-500 text-sm">Avg Time to Complete</p>
+              <p class="text-3xl font-bold text-blue-600">${this.formatTime(r.avgCompletionTime)}</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-5">
+              <p class="text-gray-500 text-sm">Urgent Tickets</p>
+              <p class="text-3xl font-bold text-red-600">${r.urgentCount || 0}</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-5">
+              <p class="text-gray-500 text-sm">On-Time Rate</p>
+              <p class="text-3xl font-bold text-green-600">${r.onTimeRate || 0}%</p>
+            </div>
+          </div>
+
+          <!-- Detailed Table -->
+          <div class="bg-white rounded-xl shadow p-5">
+            <h3 class="font-semibold text-gray-800 mb-4">📋 Ticket Details</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="text-left py-3 px-4 text-sm font-semibold text-gray-600">Ticket ID</th>
+                    <th class="text-left py-3 px-4 text-sm font-semibold text-gray-600">Type</th>
+                    <th class="text-left py-3 px-4 text-sm font-semibold text-gray-600">Created</th>
+                    <th class="text-left py-3 px-4 text-sm font-semibold text-gray-600">Completed</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Time to Complete</th>
+                    <th class="text-center py-3 px-4 text-sm font-semibold text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(r.tickets || []).map(t => `
+                    <tr class="border-t">
+                      <td class="py-3 px-4 font-medium">#${t.id}</td>
+                      <td class="py-3 px-4">${t.requestType}</td>
+                      <td class="py-3 px-4 text-sm">${this.formatDate(t.createdAt)}</td>
+                      <td class="py-3 px-4 text-sm">${this.formatDate(t.completedAt)}</td>
+                      <td class="py-3 px-4 text-center ${this.getMetricClass(t.completionTime, 30)}">${this.formatTime(t.completionTime)}</td>
+                      <td class="py-3 px-4 text-center">
+                        <span class="px-2 py-1 rounded-full text-xs ${t.urgent ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+                          ${t.urgent ? 'Urgent' : 'Normal'}
+                        </span>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    bindLoginEvents() {
+      document.getElementById('loginBtn')?.addEventListener('click', () => {
+        const password = document.getElementById('loginPassword').value;
+        const name = document.getElementById('loginName').value;
+        const email = document.getElementById('loginEmail').value;
+        this.verifyLogin(password, name, email);
+      });
+
+      // Enter key support
+      ['loginPassword', 'loginName', 'loginEmail'].forEach(id => {
+        document.getElementById(id)?.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') {
+            document.getElementById('loginBtn').click();
+          }
+        });
+      });
+    }
+
+    bindDashboardEvents() {
+      // Events are handled via onclick attributes
+    }
+
+    bindReportEvents() {
+      document.getElementById('generateReport')?.addEventListener('click', () => {
+        this.state.reportClient = document.getElementById('reportClient').value;
+        this.state.reportStartDate = document.getElementById('reportStartDate').value;
+        this.state.reportEndDate = document.getElementById('reportEndDate').value;
+        this.loadClientReport();
+      });
+    }
+  }
+
+  // Initialize
+  let app;
+  window.addEventListener('DOMContentLoaded', () => {
+    app = new ClerkDashboard();
+    window.app = app;
+  });
+  </script>
+</body>
+</html>
